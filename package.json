@@ -1,0 +1,16 @@
+{
+  "name": "collective",
+  "version": "1.0.0",
+  "description": "COLLECTIVE: Consumer Group Payments on Monad Testnet for Metropolis Hackathon",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix contracts test",
+    "compile": "npm --prefix contracts run compile",
+    "deploy:local": "npm --prefix contracts run deploy:local",
+    "deploy:monad": "npm --prefix contracts run deploy:monad"
+  },
+  "keywords": ["monad", "hackathon", "solidity", "erc20", "group-payments", "web3"],
+  "author": "COLLECTIVE Team",
+  "license": "MIT"
+}

@@ -28,8 +28,8 @@ export const MONAD_TESTNET: NetworkConfig = {
 export const CONTRACT_ADDRESSES = {
   mockToken:
     (import.meta.env.VITE_MOCK_TOKEN_ADDRESS as string) ||
-    "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6",
   collectivePool:
     (import.meta.env.VITE_COLLECTIVE_POOL_ADDRESS as string) ||
-    "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+    "0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02",
 };

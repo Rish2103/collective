@@ -51,6 +51,14 @@ COLLECTIVE/
 | **Currency Symbol** | `MON` |
 | **Block Explorer** | [https://testnet.monadexplorer.com](https://testnet.monadexplorer.com) |
 
+### 🚀 Live Deployed Contracts on Monad Testnet
+
+| Contract | Address | Explorer Link |
+|---|---|---|
+| **MockERC20 (`mUSD`)** | `0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6` | [View on Explorer](https://testnet.monadexplorer.com/address/0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6) |
+| **CollectivePool (Manager)** | `0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02` | [View on Explorer](https://testnet.monadexplorer.com/address/0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02) |
+
+
 ---
 
 ## 🛡️ Smart Contract Security

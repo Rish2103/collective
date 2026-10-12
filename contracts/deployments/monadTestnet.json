@@ -1,0 +1,8 @@
+{
+  "network": "monadTestnet",
+  "chainId": 10143,
+  "mockTokenAddress": "0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6",
+  "poolManagerAddress": "0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02",
+  "deployer": "0xbDE38691fa0E8d34782a5F76504001f0Cb5b083d",
+  "deployedAt": "2026-10-12T13:03:36.964Z"
+}

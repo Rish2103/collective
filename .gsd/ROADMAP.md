@@ -7,7 +7,7 @@ updated: 2026-10-12T17:57:00+05:30
 # Roadmap
 
 > **Current Phase:** 4 - E2E Verification & Demo Polish
-> **Status:** verifying
+> **Status:** ✅ Complete
 
 ## Must-Haves (from SPEC)
 
@@ -20,7 +20,7 @@ updated: 2026-10-12T17:57:00+05:30
 - [x] Pool creation form with target, deadline presets (3m/5m/1h), and recipient
 - [x] 2-step contribution UX (approve + contribute) with live feedback
 - [x] Claim payout (target met) & claim refund (expired under target)
-- [ ] Multi-account live testing on Monad Testnet (Rehearsal)
+- [x] Multi-account live testing on Monad Testnet (Rehearsal)
 
 ---
 
@@ -65,11 +65,11 @@ updated: 2026-10-12T17:57:00+05:30
 ---
 
 ### Phase 4: E2E Verification & Demo Polish
-**Status:** 🔄 In Progress
+**Status:** ✅ Complete
 **Objective:** Rehearse the complete hackathon demo with multiple accounts on Monad Testnet, verify error boundaries, and produce submission assets.
 **Depends on:** Phase 3
 
 **Plans:**
-- [ ] Plan 4.1: Multi-account live testing on Monad Testnet.
+- [x] Plan 4.1: Multi-account live testing on Monad Testnet.
 - [x] Plan 4.2: UI polish, error states, and responsive styling.
 - [x] Plan 4.3: Documentation, deployment guide, and video demo recording checklist.

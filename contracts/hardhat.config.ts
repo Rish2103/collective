@@ -4,7 +4,10 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY || "0x0000000000000000000000000000000000000000000000000000000000000001";
+const rawKey = (process.env.PRIVATE_KEY || "").trim();
+const PRIVATE_KEY = rawKey
+  ? (rawKey.startsWith("0x") ? rawKey : "0x" + rawKey)
+  : "0x0000000000000000000000000000000000000000000000000000000000000001";
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -23,7 +26,7 @@ const config: HardhatUserConfig = {
     monadTestnet: {
       url: process.env.MONAD_TESTNET_RPC || "https://testnet-rpc.monad.xyz",
       chainId: 10143,
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [PRIVATE_KEY],
+      accounts: [PRIVATE_KEY],
     },
   },
   paths: {

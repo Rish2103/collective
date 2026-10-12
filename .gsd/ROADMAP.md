@@ -73,3 +73,20 @@ updated: 2026-10-12T17:57:00+05:30
 - [x] Plan 4.1: Multi-account live testing on Monad Testnet.
 - [x] Plan 4.2: UI polish, error states, and responsive styling.
 - [x] Plan 4.3: Documentation, deployment guide, and video demo recording checklist.
+
+---
+
+### Phase 5: COLLECTIVE 2.0 — Innovation, Zero-Hardcoding & Premium UI Upgrade
+**Status:** ⏳ In Progress
+**Objective:** Deliver shareable pool links, on-chain activity timeline, personal contributions dashboard, funding intelligence, zero-hardcoding centralization, and premium Metropolis UI.
+**Depends on:** Phase 4
+
+**Plans:**
+- [ ] Plan 5.1: Zero-hardcoding audit and centralized configuration module.
+- [ ] Plan 5.2: Shareable pool links with URL parameter routing (`?pool=id`) and copy feedback.
+- [ ] Plan 5.3: Transparent on-chain activity timeline with live event decoding and last sync time.
+- [ ] Plan 5.4: Personal contributions / backer dashboard with claimable refund badges.
+- [ ] Plan 5.5: Funding intelligence metrics (velocity, stretch goals, contributor analytics) & filters.
+- [ ] Plan 5.6: Trust & transparency panel with verified explorer links & gas guidance.
+- [ ] Plan 5.7: Premium Metropolis design overhaul & transaction status feedback system.
+- [ ] Plan 5.8: Comprehensive verification (contracts, build, Playwright browser tests).

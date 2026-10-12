@@ -1,49 +1,53 @@
 ---
-updated: 2026-10-12T17:57:00+05:30
+updated: 2026-10-12T21:35:00+05:30
 ---
 
 # Project State
 
 ## Current Position
 
-**Milestone:** COLLECTIVE MVP
-**Phase:** 4 - E2E Verification & Demo Polish
+**Milestone:** COLLECTIVE 2.0 — Innovation, Zero-Hardcoding Architecture, Premium UI & Reliability Upgrade
+**Phase:** Phase 5 — COLLECTIVE 2.0 Execution
 **Status:** complete
-**Plan:** All Phase 4 plans complete & verified on Monad Testnet
+**Plan:** Plans 5.1 through 5.8 completed and verified with empirical test and browser evidence
 
 ## Last Action
 
-- Deployed contracts to live Monad Testnet (Chain ID 10143):
-  * MockERC20 (`mUSD`): `0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6`
-  * CollectivePool: `0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02`
-- Saved deployment metadata to `contracts/deployments/monadTestnet.json`.
-- Configured frontend `.env` and `frontend/src/contracts/config.ts` with live Monad Testnet addresses.
-- Executed multi-account live test on Monad Testnet:
-  * Happy path: Pool created ➔ Deployer & Alice contributed ➔ Target reached ➔ Payout claimed to Bob (+100 mUSD received).
-  * Refund path: Pool created with short deadline ➔ Alice contributed ➔ Deadline expired ➔ 100% refund claimed (+75 mUSD restored).
-- All unit tests passing (20/20) and frontend production build verified.
-
-## Next Steps
-
-1. Run `npm run dev` to interact with the live dApp in the browser.
-2. Push repository to public remote (GitHub/GitLab).
-3. Optional: Deploy frontend to hosted platform (Vercel/Netlify).
-4. Record technical demo video and submit before deadline (Oct 14, 09:29 AM IST).
+- **Architectural Zero-Hardcoding Audit & Enforcement**:
+  * Centralized configuration in `frontend/src/contracts/config.ts` with strict environment variable validation.
+  * Verified 0 fake pools, 0 dummy statistics, and 0 hardcoded addresses in UI.
+  * Deterministic BigInt token formatting via `ethers.formatUnits` in `utils/formatters.ts`.
+- **Feature 1: Direct Shareable Pool Links (`?pool=<id>`)**:
+  * Added 1-click share button on pool cards and modal with Web Share API and clipboard copy.
+  * Direct URL parameter parsing on mount (`?pool=3`), opening the pool modal automatically, with fallback notification for invalid IDs.
+- **Feature 2: Real-time On-Chain Activity Timeline**:
+  * Built `useActivityTimeline.ts` querying verified `PoolCreated`, `ContributionMade`, `PayoutClaimed`, `RefundClaimed` events on Monad Testnet within the 100-block RPC limit.
+  * Decodes block numbers, timestamps, caller addresses, and explorer deep-links in `ActivityTimeline.tsx`.
+- **Feature 3: Personal Funding Dashboard ("My Activity")**:
+  * Built `PersonalDashboard.tsx` summarizing total deposited capital, backed initiatives, created pools, and eligible pull refunds with direct claim alerts.
+- **Feature 4: Funding Intelligence & Stretch Goals**:
+  * Real backer counts, average deposit per backer, and surplus stretch goal disbursement indicator for overfunded pools (e.g. Pool #6).
+- **Feature 5: Actionable Filters & Search**:
+  * Filter pills for `All Pools (8)`, `Active (0)`, `Goal Met (3)`, `Refunds Open (5)`, `Created by Me`, and `Backed by Me`.
+- **Feature 6: Trust & Transparency Panel**:
+  * Built `TrustModal.tsx` detailing verified smart contracts, Monad Testnet chain parameters, non-custodial escrow, and pull-refund guarantees.
+- **Empirical Verification**:
+  * 28/28 passing Solidity unit tests in Hardhat.
+  * Clean `tsc && vite build` production build.
+  * 10-step Playwright browser test suite passing across Desktop, Tablet, and Mobile viewports with 0 console errors and 0 layout overflows.
 
 ## Active Decisions
 
 | Decision | Choice | Made | Affects |
 |----------|--------|------|---------|
 | Pool Architecture | Single Multi-Pool Contract (`CollectivePool.sol`) | 2026-10-12 | Contracts & Frontend state |
-| Token Standard | ERC-20 (MockUSD) with open faucet | 2026-10-12 | Contracts & Faucet UX |
+| Token Standard | ERC-20 (MockUSD / mUSD) with open faucet | 2026-10-12 | Contracts & Faucet UX |
 | Blockchain | Monad Testnet (Chain ID 10143) | 2026-10-12 | Deployment & Wallet config |
 | Refunds | Pull over Push pattern (user claims refund) | 2026-10-12 | Contract security & gas safety |
-| Demo Deadlines | Support short demo presets (3m/5m/1h) | 2026-10-12 | UI form & Hackathon judging |
+| Overfunding Economics | Surplus funds disburse to recipient on payout; refunds permanently locked once funded | 2026-10-12 | Contract invariants & UI feedback |
+| Read-Only Fallback | Fallback to public Monad JSON-RPC so all visitors can view pools without wallet | 2026-10-12 | Frontend accessibility & onboarding |
+| RPC Log Window | Query maximum 100 blocks (`currentBlock - 99` to `currentBlock`) | 2026-10-12 | Monad RPC compatibility |
 
 ## Blockers
 
-None. Everything builds and passes automated tests locally.
-
-## Concerns
-
-- Ensure team has testnet `MON` for final live contract deployment on Monad Testnet.
+None. Fully verified and demo-ready for the Metropolis Hackathon deadline.

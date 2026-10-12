@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { X, PlusCircle, Clock, Target, User, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
+import { X, PlusCircle, Clock, Target, User, Loader2, AlertCircle, Info, Sparkles } from 'lucide-react';
+import { playClickSound } from '../utils/audioFeedback';
 
 interface CreatePoolModalProps {
   isOpen: boolean;
@@ -12,15 +14,72 @@ interface CreatePoolModalProps {
     description: string
   ) => Promise<boolean>;
   isLoading: boolean;
+  actionStep?: string | null;
   account: string | null;
   tokenSymbol: string;
 }
 
+export interface PoolTemplate {
+  id: string;
+  name: string;
+  icon: string;
+  title: string;
+  description: string;
+  target: string;
+  durationSeconds: number;
+  durationLabel: string;
+}
+
+export const QUICK_TEMPLATES: PoolTemplate[] = [
+  {
+    id: 'dinner',
+    name: 'Hackathon Team Dinner',
+    icon: '🍕',
+    title: 'Hackathon Team Dinner',
+    description: 'Splitting dinner and refreshments for our Metropolis Hackathon build team.',
+    target: '150',
+    durationSeconds: 86400, // 24 hours
+    durationLabel: '24h',
+  },
+  {
+    id: 'trip',
+    name: 'Weekend Cabin Trip',
+    icon: '✈️',
+    title: 'Weekend Cabin Trip',
+    description: 'Shared Airbnb accommodation, travel passes, and group grocery supplies.',
+    target: '1200',
+    durationSeconds: 259200, // 3 days
+    durationLabel: '3d',
+  },
+  {
+    id: 'gift',
+    name: 'Colleague Farewell Gift',
+    icon: '🎁',
+    title: 'Colleague Farewell Gift',
+    description: 'Community pool for a farewell tech gift and customized memory card.',
+    target: '80',
+    durationSeconds: 43200, // 12 hours
+    durationLabel: '12h',
+  },
+  {
+    id: 'fast-demo',
+    name: 'Fast Demo Test',
+    icon: '⚡',
+    title: 'Fast Demo Test Pool',
+    description: 'Rapid test pool for live judge demonstration with 10-minute expiry.',
+    target: '50',
+    durationSeconds: 600, // 10 minutes
+    durationLabel: '10m',
+  },
+];
+
 const DURATION_PRESETS = [
   { label: '3 Mins (Demo)', seconds: 180 },
   { label: '5 Mins (Demo)', seconds: 300 },
-  { label: '1 Hour', seconds: 3600 },
+  { label: '10 Mins (Demo)', seconds: 600 },
+  { label: '12 Hours', seconds: 43200 },
   { label: '1 Day', seconds: 86400 },
+  { label: '3 Days', seconds: 259200 },
   { label: '7 Days', seconds: 604800 },
 ];
 
@@ -29,6 +88,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
   onClose,
   onCreate,
   isLoading,
+  actionStep,
   account,
   tokenSymbol,
 }) => {
@@ -37,47 +97,147 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
   const [target, setTarget] = useState('500');
   const [recipient, setRecipient] = useState(account || '');
   const [durationSeconds, setDurationSeconds] = useState(300); // 5 min default for demo
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  const handleSelectTemplate = (tmpl: PoolTemplate) => {
+    playClickSound();
+    setSelectedTemplateId(tmpl.id);
+    setTitle(tmpl.title);
+    setDescription(tmpl.description);
+    setTarget(tmpl.target);
+    setDurationSeconds(tmpl.durationSeconds);
+    setValidationError(null);
+
+    if (account) {
+      setRecipient(account);
+    } else {
+      setValidationError("Wallet not connected. Connect your wallet to autofill your address as recipient.");
+    }
+  };
 
   // Update recipient when account connects
-  React.useEffect(() => {
+  useEffect(() => {
     if (account && !recipient) {
       setRecipient(account);
     }
   }, [account, recipient]);
 
+  // Handle escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isLoading) onClose();
+    };
+    if (isOpen) window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isLoading, onClose]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ok = await onCreate(recipient, target, durationSeconds, title, description);
+    if (!account) {
+      setValidationError("Please connect your wallet to create a pool on Monad Testnet.");
+      return;
+    }
+
+    // Validation
+    const cleanTitle = title.trim();
+    if (!cleanTitle) {
+      setValidationError("Please enter a descriptive pool title.");
+      return;
+    }
+
+    const targetNum = parseFloat(target);
+    if (isNaN(targetNum) || targetNum <= 0) {
+      setValidationError("Funding target must be greater than zero.");
+      return;
+    }
+
+    const cleanRecipient = recipient.trim();
+    if (!cleanRecipient || !ethers.isAddress(cleanRecipient)) {
+      setValidationError("Please enter a valid EVM recipient address (0x...).");
+      return;
+    }
+
+    const ok = await onCreate(cleanRecipient, target, durationSeconds, cleanTitle, description.trim());
     if (ok) {
       setTitle('');
       setDescription('');
+      setSelectedTemplateId(null);
       onClose();
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg p-6 bg-[#12141c] border border-purple-800/40 rounded-2xl shadow-2xl shadow-purple-950/50 max-h-[90vh] overflow-y-auto">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-pool-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+    >
+      <div className="relative w-full max-w-lg p-6 sm:p-7 bg-[#10131c] border border-indigo-900/40 rounded-3xl shadow-2xl shadow-indigo-950/60 max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+          disabled={isLoading}
+          aria-label="Close dialog"
+          className="absolute top-5 right-5 p-2 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors disabled:opacity-50"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center space-x-3 mb-4">
-          <div className="p-2.5 rounded-xl bg-purple-900/40 text-purple-400 border border-purple-700/50">
+        <div className="flex items-center space-x-3 mb-5">
+          <div className="p-3 rounded-2xl bg-indigo-950/60 text-indigo-400 border border-indigo-800/40">
             <PlusCircle className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-white">Create Group Funding Pool</h3>
-            <p className="text-xs text-gray-400">Enforced by Monad smart contract</p>
+            <h3 id="create-pool-title" className="text-xl font-bold text-white tracking-tight">Create Funding Pool</h3>
+            <p className="text-xs text-indigo-300/80">Enforced on-chain by Monad Smart Contract</p>
           </div>
         </div>
 
+        {validationError && (
+          <div className="mb-4 p-3 rounded-xl bg-rose-950/70 border border-rose-600/50 flex items-center space-x-2 text-rose-300 text-xs">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{validationError}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Quick Start Templates */}
+          <div className="p-3.5 rounded-2xl bg-[#131722]/80 border border-[#212638]">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Quick Start Templates</span>
+              </span>
+              <span className="text-[10px] text-gray-400 font-mono">1-Click Autofill</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {QUICK_TEMPLATES.map((tmpl) => (
+                <button
+                  key={tmpl.id}
+                  type="button"
+                  onClick={() => handleSelectTemplate(tmpl)}
+                  disabled={isLoading}
+                  className={`p-2.5 rounded-xl text-left border transition-all flex items-start gap-2 ${
+                    selectedTemplateId === tmpl.id
+                      ? 'bg-indigo-950/70 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/40'
+                      : 'bg-[#0f121a] border-[#1d2232] hover:border-indigo-800/60 text-gray-300 hover:text-white'
+                  }`}
+                >
+                  <span className="text-base leading-none mt-0.5">{tmpl.icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold truncate">{tmpl.name}</div>
+                    <div className="text-[10px] text-gray-400 font-mono">
+                      {tmpl.target} {tokenSymbol} · {tmpl.durationLabel}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Pool Title */}
           <div>
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
@@ -87,51 +247,59 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Hackathon Team Dinner & Lodging"
-              className="w-full px-4 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700 focus:border-purple-500 text-white outline-none text-sm transition-all"
+              placeholder="e.g. Hackathon Team Travel & Lodging"
+              className="w-full px-4 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white outline-none text-sm transition-all"
               required
+              disabled={isLoading}
             />
           </div>
 
           {/* Description */}
           <div>
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-              Description
+              Description (Optional)
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What is this pool funding? Add details for your members."
+              placeholder="Explain the purpose of this pool to your contributors..."
               rows={2}
-              className="w-full px-4 py-2 rounded-xl bg-gray-900/90 border border-gray-700 focus:border-purple-500 text-white outline-none text-sm transition-all resize-none"
+              className="w-full px-4 py-2 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white outline-none text-sm transition-all resize-none"
+              disabled={isLoading}
             />
           </div>
 
           {/* Target Amount */}
           <div>
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-              <span className="flex items-center space-x-1">
-                <Target className="w-3.5 h-3.5 text-purple-400" />
-                <span>Target Amount ({tokenSymbol}) *</span>
+              <span className="flex items-center space-x-1.5">
+                <Target className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Target Funding Goal ({tokenSymbol}) *</span>
               </span>
             </label>
-            <input
-              type="number"
-              min="1"
-              step="any"
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              placeholder="500"
-              className="w-full px-4 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700 focus:border-purple-500 font-mono text-white outline-none text-sm transition-all"
-              required
-            />
+            <div className="relative">
+              <input
+                type="number"
+                min="1"
+                step="any"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                placeholder="500"
+                className="w-full px-4 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono text-white outline-none text-sm transition-all"
+                required
+                disabled={isLoading}
+              />
+              <span className="absolute right-3.5 top-2.5 text-xs font-semibold text-gray-400">
+                {tokenSymbol}
+              </span>
+            </div>
           </div>
 
           {/* Recipient Address */}
           <div>
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-              <span className="flex items-center space-x-1">
-                <User className="w-3.5 h-3.5 text-purple-400" />
+              <span className="flex items-center space-x-1.5">
+                <User className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Fixed Recipient Address *</span>
               </span>
             </label>
@@ -140,20 +308,27 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
               value={recipient}
               onChange={(e) => setRecipient(e.target.value)}
               placeholder="0x..."
-              className="w-full px-4 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700 focus:border-purple-500 font-mono text-white outline-none text-xs transition-all"
+              className="w-full px-4 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono text-xs text-white outline-none transition-all"
               required
+              disabled={isLoading}
             />
-            <p className="text-[11px] text-gray-400 mt-1">
-              Recipient who will receive the full payout if the target is reached.
-            </p>
+            {account && recipient !== account && (
+              <button
+                type="button"
+                onClick={() => setRecipient(account)}
+                className="mt-1 text-[11px] text-indigo-400 hover:text-indigo-300 underline"
+              >
+                Use my connected wallet address
+              </button>
+            )}
           </div>
 
           {/* Duration Presets */}
           <div>
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
-              <span className="flex items-center space-x-1">
-                <Clock className="w-3.5 h-3.5 text-purple-400" />
-                <span>Pool Deadline Duration</span>
+              <span className="flex items-center space-x-1.5">
+                <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Funding Deadline Duration *</span>
               </span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -162,34 +337,46 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                   key={preset.seconds}
                   type="button"
                   onClick={() => setDurationSeconds(preset.seconds)}
-                  className={`py-2 px-2.5 rounded-xl text-xs font-medium border text-center transition-all ${
+                  disabled={isLoading}
+                  className={`py-2 px-3 text-xs font-semibold rounded-xl border transition-all text-center ${
                     durationSeconds === preset.seconds
-                      ? 'bg-purple-900/50 border-purple-500 text-purple-200 shadow-sm'
-                      : 'bg-gray-900/60 border-gray-800 text-gray-400 hover:border-gray-700'
+                      ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200 shadow-sm'
+                      : 'bg-gray-900/60 border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-300'
                   }`}
                 >
                   {preset.label}
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">
-              Select 3 or 5 minutes for rapid live demo and judging evaluation.
+            <p className="mt-2 text-[11px] text-gray-400 flex items-center space-x-1">
+              <Info className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+              <span>If target is not met by the deadline, 100% refunds become available.</span>
             </p>
           </div>
+
+          {/* Action Step Feedback */}
+          {isLoading && actionStep && (
+            <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-800/40 flex items-center space-x-2 text-indigo-300 text-xs">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <span>{actionStep}</span>
+            </div>
+          )}
 
           {/* Submit */}
           <button
             type="submit"
-            disabled={isLoading || !title || !recipient || !target}
-            className="w-full mt-4 py-3 px-4 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-600/30 flex items-center justify-center space-x-2 transition-all"
+            disabled={isLoading || !account}
+            className="w-full mt-2 py-3 px-4 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-600/25 flex items-center justify-center space-x-2 transition-all"
           >
-            {isLoading ? (
+            {!account ? (
+              <span>Connect Wallet to Launch Pool</span>
+            ) : isLoading ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span>Deploying Pool to Monad...</span>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Deploying Pool on Monad...</span>
               </>
             ) : (
-              <span>Deploy Pool</span>
+              <span>Launch Pool on Monad</span>
             )}
           </button>
         </form>

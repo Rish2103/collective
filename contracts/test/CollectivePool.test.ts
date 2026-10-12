@@ -372,4 +372,245 @@ describe("COLLECTIVE Smart Contract Test Suite", function () {
       expect(await poolManager.getComputedState(1)).to.equal(1); // PaidOut
     });
   });
+
+  describe("Overfunding Semantics & Accounting", function () {
+    it("should accept contributions exceeding the target and disburse totalContributed to recipient", async function () {
+      await poolManager.connect(creator).createPool(
+        await mockToken.getAddress(),
+        recipient.address,
+        TARGET_AMOUNT,
+        ONE_DAY,
+        "Overfunded Pool",
+        "Testing contributions exceeding target"
+      );
+
+      // Target is 1,000. Alice contributes 600, Bob contributes 700 => Total 1,300 (overfunded by 300)
+      await poolManager.connect(alice).contribute(0, ethers.parseEther("600"));
+      await poolManager.connect(bob).contribute(0, ethers.parseEther("700"));
+
+      const pool = await poolManager.pools(0);
+      expect(pool.totalContributed).to.equal(ethers.parseEther("1300"));
+      expect(pool.totalContributed).to.be.gt(pool.targetAmount);
+
+      const recipientBalBefore = await mockToken.balanceOf(recipient.address);
+      await poolManager.claimPayout(0);
+      const recipientBalAfter = await mockToken.balanceOf(recipient.address);
+
+      // Recipient receives the full 1,300 tokens
+      expect(recipientBalAfter - recipientBalBefore).to.equal(ethers.parseEther("1300"));
+
+      // Contract balance for this pool becomes zero
+      expect(await mockToken.balanceOf(await poolManager.getAddress())).to.equal(0n);
+
+      // State is PaidOut; further contributions must revert
+      await expect(
+        poolManager.connect(alice).contribute(0, ethers.parseEther("50"))
+      ).to.be.revertedWith("Pool is not active");
+    });
+
+    it("should permanently lock out refunds once pool reaches or exceeds target", async function () {
+      await poolManager.connect(creator).createPool(
+        await mockToken.getAddress(),
+        recipient.address,
+        TARGET_AMOUNT,
+        ONE_DAY,
+        "Protected Pool",
+        "Target reached"
+      );
+
+      await poolManager.connect(alice).contribute(0, ethers.parseEther("1000"));
+
+      // Advance time past deadline
+      await time.increase(ONE_DAY + 10);
+
+      // Even though deadline passed, refund must revert because target was reached
+      await expect(poolManager.connect(alice).claimRefund(0)).to.be.revertedWith(
+        "Target reached, refund unavailable"
+      );
+
+      // Payout can still be claimed after deadline since target was met
+      await expect(poolManager.claimPayout(0)).to.emit(poolManager, "PayoutClaimed");
+    });
+  });
+
+  describe("Exact Boundary Conditions (Timestamp Precision)", function () {
+    it("should reject contribution when deadline arrives and allow refund once expired", async function () {
+      const duration = 300;
+      await poolManager.connect(creator).createPool(
+        await mockToken.getAddress(),
+        recipient.address,
+        TARGET_AMOUNT,
+        duration,
+        "Boundary Pool",
+        "Testing exact timestamp transitions"
+      );
+
+      const pool = await poolManager.pools(0);
+      const deadline = pool.deadline;
+
+      // Alice contributes while active
+      await poolManager.connect(alice).contribute(0, ethers.parseEther("200"));
+
+      // Set timestamp to exactly deadline
+      await time.increaseTo(deadline);
+
+      // At deadline: contribute() reverts because block.timestamp < pool.deadline is false
+      await expect(
+        poolManager.connect(bob).contribute(0, ethers.parseEther("50"))
+      ).to.be.revertedWith("Pool deadline has passed");
+
+      // At deadline: claimRefund() succeeds because block.timestamp >= pool.deadline is true
+      const aliceBalBefore = await mockToken.balanceOf(alice.address);
+      await expect(poolManager.connect(alice).claimRefund(0))
+        .to.emit(poolManager, "RefundClaimed")
+        .withArgs(0, alice.address, ethers.parseEther("200"));
+      const aliceBalAfter = await mockToken.balanceOf(alice.address);
+      expect(aliceBalAfter - aliceBalBefore).to.equal(ethers.parseEther("200"));
+    });
+  });
+
+  describe("Multiple Contributions by Same Account & Multi-Pool Isolation", function () {
+    it("should accurately accumulate multiple deposits by same user and refund total accumulated amount", async function () {
+      await poolManager.connect(creator).createPool(
+        await mockToken.getAddress(),
+        recipient.address,
+        TARGET_AMOUNT,
+        ONE_DAY,
+        "Accumulation Pool",
+        "Testing multiple deposits from single account"
+      );
+
+      // Alice makes 3 sequential contributions: 100, 150, 200 => 450 total
+      await poolManager.connect(alice).contribute(0, ethers.parseEther("100"));
+      await poolManager.connect(alice).contribute(0, ethers.parseEther("150"));
+      await poolManager.connect(alice).contribute(0, ethers.parseEther("200"));
+
+      expect(await poolManager.contributions(0, alice.address)).to.equal(ethers.parseEther("450"));
+
+      // Contributors array should only list Alice once
+      const contributors = await poolManager.getContributors(0);
+      expect(contributors.length).to.equal(1);
+      expect(contributors[0]).to.equal(alice.address);
+
+      // Expire pool and claim refund
+      await time.increase(ONE_DAY + 1);
+      const balBefore = await mockToken.balanceOf(alice.address);
+      await poolManager.connect(alice).claimRefund(0);
+      const balAfter = await mockToken.balanceOf(alice.address);
+
+      expect(balAfter - balBefore).to.equal(ethers.parseEther("450"));
+      expect(await poolManager.contributions(0, alice.address)).to.equal(0n);
+    });
+
+    it("should isolate accounting across multiple concurrent pools completely", async function () {
+      // Create Pool 0 (will be PaidOut)
+      await poolManager.connect(creator).createPool(
+        await mockToken.getAddress(),
+        recipient.address,
+        ethers.parseEther("500"),
+        ONE_DAY,
+        "Pool 0",
+        "Desc 0"
+      );
+
+      // Create Pool 1 (will expire and be Refunded)
+      await poolManager.connect(creator).createPool(
+        await mockToken.getAddress(),
+        recipient.address,
+        ethers.parseEther("1000"),
+        ONE_DAY,
+        "Pool 1",
+        "Desc 1"
+      );
+
+      // Alice funds Pool 0 to completion
+      await poolManager.connect(alice).contribute(0, ethers.parseEther("500"));
+      // Bob funds Pool 1 partially
+      await poolManager.connect(bob).contribute(1, ethers.parseEther("300"));
+
+      // Verify contract holds exactly 800 tokens total
+      const managerAddr = await poolManager.getAddress();
+      expect(await mockToken.balanceOf(managerAddr)).to.equal(ethers.parseEther("800"));
+
+      // Payout Pool 0
+      await poolManager.claimPayout(0);
+      expect(await mockToken.balanceOf(managerAddr)).to.equal(ethers.parseEther("300"));
+
+      // Expire Pool 1
+      await time.increase(ONE_DAY + 1);
+      await poolManager.connect(bob).claimRefund(1);
+
+      // Contract balance is now exactly 0
+      expect(await mockToken.balanceOf(managerAddr)).to.equal(0n);
+    });
+
+    it("should handle large token quantities and 18-decimal precision safely", async function () {
+      const LARGE_TARGET = ethers.parseEther("1000000"); // 1,000,000 mUSD
+      await mockToken.connect(alice).mint(alice.address, LARGE_TARGET);
+      await mockToken.connect(alice).approve(await poolManager.getAddress(), LARGE_TARGET);
+
+      await poolManager.connect(creator).createPool(
+        await mockToken.getAddress(),
+        recipient.address,
+        LARGE_TARGET,
+        ONE_DAY,
+        "Large Pool",
+        "Million dollar pool"
+      );
+
+      await poolManager.connect(alice).contribute(0, LARGE_TARGET);
+      const pool = await poolManager.pools(0);
+      expect(pool.totalContributed).to.equal(LARGE_TARGET);
+
+      await poolManager.claimPayout(0);
+      expect(await mockToken.balanceOf(recipient.address)).to.equal(LARGE_TARGET);
+    });
+
+    it("should disallow claiming payout if pool has expired without reaching target", async function () {
+      await poolManager.connect(creator).createPool(
+        await mockToken.getAddress(),
+        recipient.address,
+        TARGET_AMOUNT,
+        ONE_DAY,
+        "Expired Underfunded Pool",
+        "Target not met"
+      );
+
+      await poolManager.connect(alice).contribute(0, ethers.parseEther("500"));
+      await time.increase(ONE_DAY + 10);
+
+      // Attempting payout must revert
+      await expect(poolManager.claimPayout(0)).to.be.revertedWith(
+        "Target amount has not been reached"
+      );
+    });
+
+    it("should ensure one contributor refunding never prevents or delays other contributors from refunding", async function () {
+      await poolManager.connect(creator).createPool(
+        await mockToken.getAddress(),
+        recipient.address,
+        TARGET_AMOUNT,
+        ONE_DAY,
+        "Multi-Refund Pool",
+        "Independent claims"
+      );
+
+      await poolManager.connect(alice).contribute(0, ethers.parseEther("200"));
+      await poolManager.connect(bob).contribute(0, ethers.parseEther("300"));
+
+      await time.increase(ONE_DAY + 1);
+
+      // Bob claims first
+      await expect(poolManager.connect(bob).claimRefund(0)).to.emit(poolManager, "RefundClaimed");
+
+      // Alice still claims successfully afterwards
+      await expect(poolManager.connect(alice).claimRefund(0)).to.emit(poolManager, "RefundClaimed");
+
+      // Both balances zeroed out in contract
+      expect(await poolManager.contributions(0, alice.address)).to.equal(0n);
+      expect(await poolManager.contributions(0, bob.address)).to.equal(0n);
+    });
+  });
 });
+
+

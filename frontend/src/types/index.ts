@@ -17,6 +17,7 @@ export interface PoolData {
   description: string;
   contributors: string[];
   userContribution?: bigint;
+  remainingHeld?: bigint;
 }
 
 export interface WalletState {

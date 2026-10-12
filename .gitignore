@@ -1,13 +1,58 @@
+# Dependencies
 node_modules/
-.env
-.env.*
-!.env.example
+frontend/node_modules/
+contracts/node_modules/
+
+# Production build artifacts
 dist/
+frontend/dist/
+.vite/
+frontend/.vite/
+
+# Smart contract compilation & types
 cache/
+contracts/cache/
 artifacts/
+contracts/artifacts/
 typechain/
 typechain-types/
+contracts/typechain-types/
+
+# Testing & Coverage
 coverage/
+contracts/coverage/
 coverage.json
+contracts/coverage.json
+test-results/
+playwright-report/
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment & Credentials (NEVER commit secrets or private keys)
+.env
+.env.local
+.env.*.local
+contracts/.env
+frontend/.env
+*.pem
+*.key
+
+# Preserve safe environment templates
+!.env.example
+!contracts/.env.example
+!frontend/.env.example
+
+# Operating System & IDE metadata
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local agent/assistant workflows and skills
+.agent/
+.agents/

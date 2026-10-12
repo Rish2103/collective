@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 import { MONAD_TESTNET, CONTRACT_ADDRESSES } from '../contracts/config';
 import { MockERC20ABI } from '../contracts/abis';
 import { WalletState } from '../types';
+import { parseWeb3Error } from '../utils/errorHandler';
 
 declare global {
   interface Window {
@@ -22,23 +23,27 @@ export function useWallet() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshTokenBalance = useCallback(async (account: string, provider: ethers.BrowserProvider) => {
+  const refreshTokenBalance = useCallback(async (account: string, provider: ethers.BrowserProvider | ethers.JsonRpcProvider) => {
     try {
       const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.mockToken, MockERC20ABI, provider);
       const balance = await tokenContract.balanceOf(account);
       const symbol = await tokenContract.symbol();
       setWallet(prev => ({ ...prev, tokenBalance: balance, tokenSymbol: symbol }));
     } catch (err) {
-      console.warn("Could not fetch token balance (contract might not be deployed yet):", err);
+      console.warn("Could not fetch token balance:", err);
     }
   }, []);
 
   const checkNetwork = useCallback(async (provider: ethers.BrowserProvider) => {
-    const network = await provider.getNetwork();
-    const chainId = Number(network.chainId);
-    // Allow Monad Testnet (10143) or local Hardhat (31337)
-    const isCorrect = chainId === MONAD_TESTNET.chainId || chainId === 31337;
-    return { chainId, isCorrect };
+    try {
+      const network = await provider.getNetwork();
+      const chainId = Number(network.chainId);
+      // Allow Monad Testnet (10143) or local Hardhat (31337)
+      const isCorrect = chainId === MONAD_TESTNET.chainId || chainId === 31337;
+      return { chainId, isCorrect };
+    } catch (e) {
+      return { chainId: null, isCorrect: false };
+    }
   }, []);
 
   const connectWallet = useCallback(async () => {
@@ -71,23 +76,27 @@ export function useWallet() {
       }
     } catch (err: any) {
       console.error("Connection error:", err);
-      setError(err?.message || "Failed to connect wallet");
+      setError(parseWeb3Error(err));
     } finally {
       setIsConnecting(false);
     }
   }, [checkNetwork, refreshTokenBalance]);
 
   const switchToMonad = useCallback(async () => {
-    if (!window.ethereum) return;
+    if (!window.ethereum) {
+      setError("MetaMask is not available to switch network.");
+      return;
+    }
 
     try {
+      setError(null);
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: MONAD_TESTNET.chainIdHex }],
       });
     } catch (switchError: any) {
       // Chain not added to MetaMask (error code 4902)
-      if (switchError.code === 4902) {
+      if (switchError.code === 4902 || switchError?.message?.includes("Unrecognized chain ID")) {
         try {
           await window.ethereum.request({
             method: "wallet_addEthereumChain",
@@ -105,7 +114,7 @@ export function useWallet() {
           setError("Failed to add Monad Testnet to MetaMask.");
         }
       } else {
-        setError(switchError?.message || "Failed to switch to Monad Testnet");
+        setError(parseWeb3Error(switchError));
       }
     }
   }, []);
@@ -140,34 +149,42 @@ export function useWallet() {
     };
 
     const handleChainChanged = () => {
+      // Per MetaMask guidelines, reload on chain change to avoid state desync
       window.location.reload();
     };
 
-    window.ethereum.on("accountsChanged", handleAccountsChanged);
-    window.ethereum.on("chainChanged", handleChainChanged);
+    window.ethereum.on('accountsChanged', handleAccountsChanged);
+    window.ethereum.on('chainChanged', handleChainChanged);
 
-    // Initial check if already connected
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    provider.listAccounts().then((accounts) => {
-      if (accounts.length > 0) {
-        const account = accounts[0].address;
-        checkNetwork(provider).then(({ chainId, isCorrect }) => {
-          setWallet(prev => ({
-            ...prev,
+    // Eager check if already connected
+    const checkEagerConnection = async () => {
+      try {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const accounts = await provider.send("eth_accounts", []);
+        if (accounts.length > 0) {
+          const account = accounts[0];
+          const { chainId, isCorrect } = await checkNetwork(provider);
+          setWallet({
             account,
             chainId,
             isConnected: true,
             isCorrectNetwork: isCorrect,
-          }));
-          refreshTokenBalance(account, provider);
-        });
+            tokenBalance: 0n,
+            tokenSymbol: 'mUSD',
+          });
+          await refreshTokenBalance(account, provider);
+        }
+      } catch (e) {
+        // Silent ignore on eager load
       }
-    }).catch(() => {});
+    };
+
+    checkEagerConnection();
 
     return () => {
       if (window.ethereum?.removeListener) {
-        window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
-        window.ethereum.removeListener("chainChanged", handleChainChanged);
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        window.ethereum.removeListener('chainChanged', handleChainChanged);
       }
     };
   }, [checkNetwork, refreshTokenBalance]);
@@ -176,6 +193,7 @@ export function useWallet() {
     ...wallet,
     isConnecting,
     error,
+    clearError: () => setError(null),
     connectWallet,
     switchToMonad,
     refreshBalance: () => {

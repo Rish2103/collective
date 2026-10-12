@@ -24,9 +24,12 @@ export const MONAD_TESTNET: NetworkConfig = {
   },
 };
 
-// Default deployed addresses (Replace with live deployed addresses from deployments/monadTestnet.json)
+// Deployed addresses: uses Vite environment variables if configured, with fallbacks to deployment output
 export const CONTRACT_ADDRESSES = {
-  // If deployed to Monad Testnet or localhost, override these
-  mockToken: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-  collectivePool: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+  mockToken:
+    (import.meta.env.VITE_MOCK_TOKEN_ADDRESS as string) ||
+    "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  collectivePool:
+    (import.meta.env.VITE_COLLECTIVE_POOL_ADDRESS as string) ||
+    "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
 };

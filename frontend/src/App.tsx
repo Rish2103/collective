@@ -613,6 +613,9 @@ export function App() {
                 onConnectWallet={wallet.connectWallet}
                 onOpenCreatePool={() => setIsCreateOpen(true)}
                 onSelectPool={(id) => setSelectedPoolId(id)}
+                onClaimRefund={handleClaimRefund}
+                onClaimPayout={handleClaimPayout}
+                actionLoading={collective.actionLoading}
               />
 
               {wallet.account && (

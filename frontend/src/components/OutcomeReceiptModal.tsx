@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, AlertOctagon, ExternalLink, Copy, Check, Share2, ShieldCheck, FileText, ArrowRight, Clock } from 'lucide-react';
+import { X, CheckCircle2, AlertOctagon, ExternalLink, Copy, Check, Share2, ShieldCheck, FileText, ArrowRight, Clock, Download } from 'lucide-react';
 import { PoolData, PoolState } from '../types';
 import { formatTokenAmount, shortenAddress, shortenTxHash, formatBlockTime } from '../utils/formatters';
 import { getExplorerAddressUrl, getExplorerTxUrl, getTokenConfig, CONTRACT_ADDRESSES } from '../contracts/config';
 import { playCopyChime } from '../utils/audioFeedback';
+import { downloadReceiptPng } from '../utils/receiptCanvas';
 
 interface OutcomeReceiptModalProps {
   isOpen: boolean;
@@ -22,8 +23,16 @@ export const OutcomeReceiptModal: React.FC<OutcomeReceiptModalProps> = ({
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedReceipt, setCopiedReceipt] = useState(false);
+  const [downloadingCard, setDownloadingCard] = useState(false);
 
   if (!isOpen || !pool) return null;
+
+  const handleDownloadCard = () => {
+    setDownloadingCard(true);
+    playCopyChime();
+    downloadReceiptPng(pool);
+    setTimeout(() => setDownloadingCard(false), 1500);
+  };
 
   const tokenConfig = getTokenConfig(pool.token);
   const isPaidOut = pool.state === PoolState.PaidOut;
@@ -258,10 +267,19 @@ Receipt Link: ${shareReceiptUrl}`;
         </div>
 
         {/* Receipt Action Buttons */}
-        <div className="flex items-center gap-2 pt-2 border-t border-[#1e2333]">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-2 border-t border-[#1e2333]">
+          <button
+            onClick={handleDownloadCard}
+            className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/30 transition flex items-center justify-center gap-1.5"
+            title="Download verified 1200x630 social receipt card as PNG image"
+          >
+            {downloadingCard ? <Check className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+            <span>{downloadingCard ? 'Receipt Card Exported!' : 'Download Receipt Card (PNG)'}</span>
+          </button>
+
           <button
             onClick={handleCopyReceipt}
-            className="flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold bg-[#161a26] hover:bg-[#202538] text-gray-200 border border-[#23283c] transition flex items-center justify-center gap-1.5"
+            className="py-2.5 px-3 rounded-xl text-xs font-semibold bg-[#161a26] hover:bg-[#202538] text-gray-200 border border-[#23283c] transition flex items-center justify-center gap-1.5"
           >
             {copiedReceipt ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             <span>{copiedReceipt ? 'Receipt Copied!' : 'Copy Summary'}</span>
@@ -269,10 +287,10 @@ Receipt Link: ${shareReceiptUrl}`;
 
           <button
             onClick={handleCopyLink}
-            className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition flex items-center justify-center gap-1.5"
+            className="py-2.5 px-3 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition flex items-center justify-center gap-1.5"
           >
             {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
-            <span>{copiedLink ? 'Link Copied!' : 'Share Receipt Link'}</span>
+            <span>{copiedLink ? 'Link Copied!' : 'Share Link'}</span>
           </button>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import { X, PlusCircle, Clock, Target, User, Loader2, AlertCircle, Info, Sparkles, Users, Coins } from 'lucide-react';
+import { X, PlusCircle, Clock, Target, User, Loader2, AlertCircle, Info, Sparkles, Users, Coins, Calculator, Check } from 'lucide-react';
 import { playClickSound } from '../utils/audioFeedback';
 import { SUPPORTED_TOKENS, TokenConfig } from '../contracts/config';
 
@@ -113,6 +113,32 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
   const [expectedParticipants, setExpectedParticipants] = useState<string>('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  // Bill-Splitter & Tip Calculator State
+  const [showBillSplitter, setShowBillSplitter] = useState(false);
+  const [billBaseAmount, setBillBaseAmount] = useState('120');
+  const [tipPercent, setTipPercent] = useState<number>(15);
+  const [splitCount, setSplitCount] = useState('4');
+  const [splitterApplied, setSplitterApplied] = useState(false);
+
+  const baseNum = parseFloat(billBaseAmount) || 0;
+  const tipAmount = (baseNum * tipPercent) / 100;
+  const totalWithTip = baseNum + tipAmount;
+  const splitNum = parseInt(splitCount, 10) || 1;
+  const perPersonSplit = splitNum > 0 ? (totalWithTip / splitNum).toFixed(2) : '0';
+
+  const handleApplySplitter = () => {
+    if (baseNum <= 0) return;
+    setTarget(totalWithTip.toFixed(2));
+    setExpectedParticipants(String(splitNum));
+    const summary = `🧾 Bill Split: $${baseNum.toFixed(2)}${tipPercent > 0 ? ` + ${tipPercent}% Tip ($${tipAmount.toFixed(2)})` : ''} split across ${splitNum} people (~$${perPersonSplit} each).`;
+    if (!description.includes('Bill Split:')) {
+      setDescription((prev) => (prev ? `${summary}\n\n${prev}` : summary));
+    }
+    setSplitterApplied(true);
+    playClickSound();
+    setTimeout(() => setSplitterApplied(false), 2000);
+  };
 
   const activeToken: TokenConfig = SUPPORTED_TOKENS[selectedTokenKey];
 
@@ -355,6 +381,116 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
               className="w-full px-4 py-2 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white outline-none text-sm transition-all resize-none"
               disabled={isLoading}
             />
+          </div>
+
+          {/* Feature: Split The Bill & Tip Calculator */}
+          <div className="p-3.5 rounded-2xl bg-[#131722]/90 border border-indigo-900/40 space-y-3">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setShowBillSplitter(!showBillSplitter);
+                }}
+                className="flex items-center gap-2 text-xs font-semibold text-indigo-300 hover:text-white transition"
+              >
+                <div className="w-6 h-6 rounded-lg bg-indigo-950/80 flex items-center justify-center text-indigo-400 border border-indigo-800/40">
+                  <Calculator className="w-3.5 h-3.5" />
+                </div>
+                <span>Bill-Splitter & Tip Tool</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono">
+                  {showBillSplitter ? 'Close' : 'Calculate Split'}
+                </span>
+              </button>
+              <span className="text-[10px] text-gray-400 font-mono">Dinner / Travel / Shared Cart</span>
+            </div>
+
+            {showBillSplitter && (
+              <div className="pt-2 border-t border-[#1e2538] space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-medium text-gray-400 block mb-1">
+                      Raw Bill Amount ({activeToken.symbol})
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      value={billBaseAmount}
+                      onChange={(e) => setBillBaseAmount(e.target.value)}
+                      placeholder="120"
+                      className="w-full px-3 py-1.5 rounded-xl bg-gray-900/90 border border-gray-700 text-white font-mono text-xs focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-medium text-gray-400 block mb-1">
+                      Split Among (Friends)
+                    </label>
+                    <input
+                      type="number"
+                      min="2"
+                      max="100"
+                      value={splitCount}
+                      onChange={(e) => setSplitCount(e.target.value)}
+                      placeholder="4"
+                      className="w-full px-3 py-1.5 rounded-xl bg-gray-900/90 border border-gray-700 text-white font-mono text-xs focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-medium text-gray-400 block mb-1">
+                    Tip / Service Buffer
+                  </label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[0, 10, 15, 18, 20].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => {
+                          playClickSound();
+                          setTipPercent(pct);
+                        }}
+                        className={`py-1.5 rounded-lg text-xs font-semibold border transition ${
+                          tipPercent === pct
+                            ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
+                            : 'bg-[#0f121a] text-gray-400 border-[#1d2232] hover:text-white'
+                        }`}
+                      >
+                        {pct === 0 ? '0%' : `+${pct}%`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Calculation Result & Apply Button */}
+                <div className="p-2.5 rounded-xl bg-[#0c0f18] border border-indigo-950/80 flex flex-col sm:flex-row items-center justify-between gap-2">
+                  <div className="text-xs">
+                    <span className="text-gray-400">Total: </span>
+                    <strong className="text-white font-mono font-bold">${totalWithTip.toFixed(2)}</strong>
+                    <span className="text-gray-500"> (Tip: ${tipAmount.toFixed(2)}) · </span>
+                    <strong className="text-emerald-400 font-mono font-bold">${perPersonSplit}</strong>
+                    <span className="text-gray-400"> / person</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleApplySplitter}
+                    className="w-full sm:w-auto px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-1 transition shadow-sm"
+                  >
+                    {splitterApplied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>Applied!</span>
+                      </>
+                    ) : (
+                      <span>Apply to Target & FairShare</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Target Amount */}

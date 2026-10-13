@@ -12,6 +12,9 @@ import { HowItWorks } from './components/HowItWorks';
 import { ShareModal } from './components/ShareModal';
 import { OutcomeReceiptModal } from './components/OutcomeReceiptModal';
 import { TransactionFeedback, TransactionStatus } from './components/TransactionFeedback';
+import { SpotlightCard } from './components/SpotlightCard';
+import { LiveNetworkPulse } from './components/LiveNetworkPulse';
+import { LiveSimulator } from './components/LiveSimulator';
 import { useWallet } from './hooks/useWallet';
 import { useCollective } from './hooks/useCollective';
 import { useActivityTimeline } from './hooks/useActivityTimeline';
@@ -64,6 +67,26 @@ export function App() {
 
   // Global Transaction Status for floating toast feedback
   const [txFeedback, setTxFeedback] = useState<TransactionStatus>({ state: 'idle' });
+
+  // Prefill state for launching a pool from the Live Interactive Simulator
+  const [createPoolPrefill, setCreatePoolPrefill] = useState<{
+    title?: string;
+    target?: string;
+    tokenKey?: 'MUSD' | 'USDC';
+    participants?: number;
+    description?: string;
+  } | null>(null);
+
+  const handleLaunchFromSimulator = (preset: {
+    title: string;
+    target: string;
+    tokenKey: 'MUSD' | 'USDC';
+    participants: number;
+    description: string;
+  }) => {
+    setCreatePoolPrefill(preset);
+    setIsCreateOpen(true);
+  };
 
   // 1. Read initial URL query params (?pool=<id>&rescue=true&receipt=true) on boot
   useEffect(() => {
@@ -437,9 +460,16 @@ export function App() {
           </div>
         )}
 
+        {/* Real-Time Monad Network Pulse & Security Proof Strip */}
+        <LiveNetworkPulse onOpenTrustModal={() => setIsTrustOpen(true)} />
+
         {/* Hero Section */}
-        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-indigo-950/20 via-purple-950/10 to-transparent border border-[#1e2333] p-8 sm:p-12 text-center shadow-2xl">
-          <div className="max-w-3xl mx-auto space-y-4">
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#0f121e] via-[#090b13] to-transparent border border-[#1e2333] p-8 sm:p-12 text-center shadow-2xl">
+          {/* Ambient Drifting Aurora Glows (Stripe style) */}
+          <div className="absolute -top-32 -left-32 w-80 h-80 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none animate-ambient-drift" />
+          <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-purple-600/15 rounded-full blur-3xl pointer-events-none animate-ambient-drift" />
+
+          <div className="max-w-3xl mx-auto space-y-4 relative z-10">
             <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/25 text-xs font-semibold">
               <Zap className="w-3.5 h-3.5 text-indigo-400" />
               <span>Consumer Group Payments with Guaranteed Refunds • Monad Testnet</span>
@@ -489,36 +519,59 @@ export function App() {
             </div>
           </div>
 
-          {/* Key Metric Stats Cards - 100% Derived from On-Chain State */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mt-8 pt-8 border-t border-[#1e2333] max-w-4xl mx-auto">
-            <div className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left">
+          {/* Key Metric Stats Cards - Cursor Reactive Spotlight Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mt-8 pt-8 border-t border-[#1e2333] max-w-4xl mx-auto relative z-10">
+            <SpotlightCard
+              spotlightColor="rgba(99, 102, 241, 0.14)"
+              borderColor="rgba(129, 140, 248, 0.35)"
+              maxTilt={3}
+              className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left"
+            >
               <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Pools Created</span>
               <span className="font-mono text-2xl font-black text-white">{stats.totalCount}</span>
               <span className="text-[10px] text-indigo-400 block mt-0.5">On Monad Testnet</span>
-            </div>
+            </SpotlightCard>
 
-            <div className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left">
+            <SpotlightCard
+              spotlightColor="rgba(168, 85, 247, 0.14)"
+              borderColor="rgba(192, 132, 252, 0.35)"
+              maxTilt={3}
+              className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left"
+            >
               <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Funding in Progress</span>
               <span className="font-mono text-2xl font-black text-indigo-300">{stats.inProgressCount}</span>
               <span className="text-[10px] text-gray-400 block mt-0.5">Active pots</span>
-            </div>
+            </SpotlightCard>
 
-            <div className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left">
+            <SpotlightCard
+              spotlightColor="rgba(52, 211, 153, 0.14)"
+              borderColor="rgba(16, 185, 129, 0.35)"
+              maxTilt={3}
+              className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left"
+            >
               <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Goal Secured</span>
               <span className="font-mono text-2xl font-black text-white">{stats.goalSecuredCount}</span>
               <span className="text-[10px] text-emerald-400 block mt-0.5">100% target reached</span>
-            </div>
+            </SpotlightCard>
 
-            <div className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left">
+            <SpotlightCard
+              spotlightColor="rgba(16, 185, 129, 0.14)"
+              borderColor="rgba(52, 211, 153, 0.35)"
+              maxTilt={3}
+              className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left"
+            >
               <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Settled Goals</span>
               <span className="font-mono text-2xl font-black text-emerald-400">{stats.settledCount}</span>
               <span className="text-[10px] text-gray-400 block mt-0.5">Released to recipients</span>
-            </div>
+            </SpotlightCard>
           </div>
 
           {/* How COLLECTIVE Works: 3-Step Lifecycle Explainer */}
           <HowItWorks tokenSymbol={wallet.tokenSymbol} />
         </section>
+
+        {/* Interactive Live Settlement & Monad Speed Simulator (Stripe style) */}
+        <LiveSimulator onLaunchPool={handleLaunchFromSimulator} />
 
         {/* View Switcher: Browse Pools vs On-Chain Activity vs Personal Portfolio */}
         <section className="space-y-5">
@@ -878,12 +931,16 @@ export function App() {
 
       <CreatePoolModal
         isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
+        onClose={() => {
+          setIsCreateOpen(false);
+          setCreatePoolPrefill(null);
+        }}
         onCreate={collective.createPool}
         isLoading={collective.actionLoading === 'creating'}
         actionStep={collective.actionStep}
         account={wallet.account}
         tokenSymbol={wallet.tokenSymbol}
+        initialValues={createPoolPrefill}
       />
 
       <TrustModal

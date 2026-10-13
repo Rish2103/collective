@@ -4,6 +4,7 @@ import { PoolData, PoolState } from '../types';
 import { formatTokenAmount, shortenAddress, formatDeadline } from '../utils/formatters';
 import { getExplorerAddressUrl, getTokenConfig } from '../contracts/config';
 import { playCopyChime } from '../utils/audioFeedback';
+import { SpotlightCard } from './SpotlightCard';
 
 interface PoolCardProps {
   pool: PoolData;
@@ -94,7 +95,12 @@ export const PoolCard: React.FC<PoolCardProps> = ({
   const displayDescription = pool.cleanDescription || pool.description || "No description provided.";
 
   return (
-    <div className="bg-[#0e111a] border border-[#1e2333] hover:border-indigo-500/40 rounded-2xl p-5 sm:p-6 shadow-xl transition-all duration-200 hover:-translate-y-1 flex flex-col justify-between group relative overflow-hidden">
+    <SpotlightCard
+      spotlightColor="rgba(99, 102, 241, 0.14)"
+      borderColor="rgba(129, 140, 248, 0.4)"
+      maxTilt={2}
+      className="bg-[#0e111a] border border-[#1e2333] hover:border-indigo-500/40 rounded-2xl p-5 sm:p-6 shadow-xl transition-all duration-200 hover:-translate-y-1 flex flex-col justify-between group"
+    >
       <div>
         {/* Top Header: Pool ID, Token badge & Status Badges */}
         <div className="flex items-start justify-between gap-2 mb-3">
@@ -311,6 +317,6 @@ export const PoolCard: React.FC<PoolCardProps> = ({
           </button>
         )}
       </div>
-    </div>
+    </SpotlightCard>
   );
 };

@@ -118,11 +118,12 @@ async function runBrowserAudit() {
       await desktopPage.waitForSelector('form', { timeout: 5000 });
       console.log("Create Pool modal opened.");
 
-      // Check for template buttons
-      const templateDinner = await desktopPage.$('button:has-text("Team Dinner")');
-      const templateTrip = await desktopPage.$('button:has-text("Cabin Trip")');
-      const templateGift = await desktopPage.$('button:has-text("Farewell Gift")');
-      const templateDemo = await desktopPage.$('button:has-text("Fast Demo")');
+      // Check for template buttons inside dialog
+      const dialog = await desktopPage.$('div[role="dialog"]');
+      const templateDinner = dialog ? await dialog.$('button:has-text("Team Dinner")') : null;
+      const templateTrip = dialog ? await dialog.$('button:has-text("Cabin Trip")') : null;
+      const templateGift = dialog ? await dialog.$('button:has-text("Farewell Gift")') : null;
+      const templateDemo = dialog ? await dialog.$('button:has-text("Fast Demo")') : null;
 
       console.log(`Templates present: Dinner (${Boolean(templateDinner)}), Trip (${Boolean(templateTrip)}), Gift (${Boolean(templateGift)}), Demo (${Boolean(templateDemo)})`);
 
@@ -131,14 +132,86 @@ async function runBrowserAudit() {
         await desktopPage.waitForTimeout(300);
 
         // Check if form fields autofilled
-        const titleVal = await desktopPage.$eval('form input[type="text"]', (el) => el.value);
-        const amountVal = await desktopPage.$eval('input[type="number"]', (el) => el.value);
+        const titleVal = await dialog.$eval('form input[type="text"]', (el) => el.value);
+        const amountVal = await dialog.$eval('input[type="number"]', (el) => el.value);
         console.log(`Autofilled title: "${titleVal}", target amount: "${amountVal}"`);
       }
+
+      // Scroll modal slightly to capture the FairShare section
+      await desktopPage.evaluate(() => {
+        const modalBody = document.querySelector('div[role="dialog"] > div');
+        if (modalBody) modalBody.scrollTop = 260;
+      });
+      await desktopPage.waitForTimeout(300);
 
       const createModalScreenshot = path.join(SCREENSHOT_DIR, 'collective2_create_templates.png');
       await desktopPage.screenshot({ path: createModalScreenshot });
       console.log(`Saved Create Modal with templates screenshot: ${createModalScreenshot}`);
+
+      await desktopPage.keyboard.press('Escape');
+      await desktopPage.waitForTimeout(500);
+    }
+
+    // ==========================================
+    // TEST 4B: Live Interactive Settlement & Finality Simulator (Stripe Inspired)
+    // ==========================================
+    console.log("\n[TEST 4B] Testing Live Settlement & Finality Simulator (Stripe style)...");
+    
+    // Check Live Network Pulse Bar
+    const pulseBlock = await desktopPage.$('span:has-text("Block:")');
+    const pulseFinality = await desktopPage.$('span:has-text("Finality:")');
+    console.log(`Live Network Pulse detected: Block (${Boolean(pulseBlock)}), Finality (${Boolean(pulseFinality)})`);
+
+    // Scroll to Live Simulator
+    await desktopPage.evaluate(() => {
+      const sim = document.querySelector('h2');
+      if (sim) sim.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    await desktopPage.waitForTimeout(600);
+
+    // Click "Weekend Cabin" preset
+    const cabinPreset = await desktopPage.$('button:has-text("Weekend Cabin")');
+    if (cabinPreset) {
+      await cabinPreset.click();
+      await desktopPage.waitForTimeout(300);
+      console.log("Selected Weekend Cabin preset in Live Simulator.");
+    }
+
+    // Click "⚡ Test Sub-Second Monad Finality" simulation button
+    const simBtn = await desktopPage.$('button:has-text("Test Sub-Second Monad Finality")');
+    if (simBtn) {
+      console.log("Triggering Sub-Second Monad Execution Simulation...");
+      await simBtn.click();
+      // Wait for stopwatch simulation (approx 1000ms)
+      await desktopPage.waitForTimeout(1100);
+      const finalizedText = await desktopPage.textContent('button:has-text("Finalized in")');
+      console.log(`Simulation complete: ${finalizedText?.trim()}`);
+    }
+
+    // Capture screenshot of the Live Simulator in action
+    const simScreenshot = path.join(SCREENSHOT_DIR, 'collective2_stripe_simulator_live.png');
+    await desktopPage.screenshot({ path: simScreenshot });
+    console.log(`Saved Stripe Live Simulator screenshot: ${simScreenshot}`);
+
+    // Switch to Scenario B (100% Pull-Refund Guarantee)
+    const refundTab = await desktopPage.$('button:has-text("Scenario B")');
+    if (refundTab) {
+      await refundTab.click();
+      await desktopPage.waitForTimeout(400);
+      console.log("Switched to Scenario B (Guaranteed 100% Pull-Refund).");
+    }
+
+    // Test "Launch This Pool" button from simulator
+    const launchPoolBtn = await desktopPage.$('button:has-text("Launch This Pool")');
+    if (launchPoolBtn) {
+      await launchPoolBtn.click();
+      await desktopPage.waitForSelector('form', { timeout: 5000 });
+      console.log("Opened Create Pool modal prefilled from Live Simulator!");
+      await desktopPage.waitForTimeout(400);
+
+      const launchedScreenshot = path.join(SCREENSHOT_DIR, 'collective2_stripe_simulator_launched.png');
+      await desktopPage.screenshot({ path: launchedScreenshot });
+      console.log(`Saved Simulator Pre-filled Create Modal screenshot: ${launchedScreenshot}`);
 
       await desktopPage.keyboard.press('Escape');
       await desktopPage.waitForTimeout(500);

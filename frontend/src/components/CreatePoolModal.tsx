@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import { X, PlusCircle, Clock, Target, User, Loader2, AlertCircle, Info, Sparkles, Users, Coins, Calculator, Check } from 'lucide-react';
+import { X, PlusCircle, Clock, Target, User, Loader2, AlertCircle, Info, Sparkles, Users, Coins, Calculator, Check, ChevronUp, ChevronDown } from 'lucide-react';
 import { playClickSound } from '../utils/audioFeedback';
 import { SUPPORTED_TOKENS, TokenConfig } from '../contracts/config';
 
@@ -20,6 +20,13 @@ interface CreatePoolModalProps {
   actionStep?: string | null;
   account: string | null;
   tokenSymbol: string;
+  initialValues?: {
+    title?: string;
+    target?: string;
+    tokenKey?: 'MUSD' | 'USDC';
+    participants?: number;
+    description?: string;
+  } | null;
 }
 
 export interface PoolTemplate {
@@ -103,6 +110,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
   isLoading,
   actionStep,
   account,
+  initialValues,
 }) => {
   const [selectedTokenKey, setSelectedTokenKey] = useState<'MUSD' | 'USDC'>('MUSD');
   const [title, setTitle] = useState('');
@@ -166,6 +174,17 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
       setRecipient(account);
     }
   }, [account, recipient]);
+
+  // Prefill initial values if passed from live simulator
+  useEffect(() => {
+    if (isOpen && initialValues) {
+      if (initialValues.title) setTitle(initialValues.title);
+      if (initialValues.target) setTarget(initialValues.target);
+      if (initialValues.tokenKey) setSelectedTokenKey(initialValues.tokenKey);
+      if (initialValues.participants) setExpectedParticipants(String(initialValues.participants));
+      if (initialValues.description) setDescription(initialValues.description);
+    }
+  }, [isOpen, initialValues]);
 
   // Handle escape key
   useEffect(() => {
@@ -384,32 +403,45 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
           </div>
 
           {/* Feature: Split The Bill & Tip Calculator */}
-          <div className="p-3.5 rounded-2xl bg-[#131722]/90 border border-indigo-900/40 space-y-3">
-            <div className="flex items-center justify-between">
+          <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-br from-[#131726] to-[#0e1220] border border-indigo-900/50 hover:border-indigo-500/40 transition-all shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-indigo-950/90 border border-indigo-700/50 flex items-center justify-center text-indigo-400 shrink-0 shadow-inner">
+                  <Calculator className="w-5 h-5 text-indigo-300" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm sm:text-base font-bold text-white tracking-tight">
+                      Bill-Splitter & Tip Tool
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 font-mono truncate">
+                    Dinner / Travel / Shared Cart
+                  </p>
+                </div>
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
                   playClickSound();
                   setShowBillSplitter(!showBillSplitter);
                 }}
-                className="flex items-center gap-2 text-xs font-semibold text-indigo-300 hover:text-white transition"
+                className={`px-4 py-2 sm:px-4.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 shrink-0 shadow-md ${
+                  showBillSplitter
+                    ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30 hover:scale-[1.02] active:scale-[0.98]'
+                }`}
               >
-                <div className="w-6 h-6 rounded-lg bg-indigo-950/80 flex items-center justify-center text-indigo-400 border border-indigo-800/40">
-                  <Calculator className="w-3.5 h-3.5" />
-                </div>
-                <span>Bill-Splitter & Tip Tool</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-mono">
-                  {showBillSplitter ? 'Close' : 'Calculate Split'}
-                </span>
+                <span>{showBillSplitter ? 'Close' : 'Calculate Split'}</span>
               </button>
-              <span className="text-[10px] text-gray-400 font-mono">Dinner / Travel / Shared Cart</span>
             </div>
 
             {showBillSplitter && (
-              <div className="pt-2 border-t border-[#1e2538] space-y-3">
+              <div className="pt-3.5 mt-3.5 border-t border-indigo-900/30 space-y-3.5">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[11px] font-medium text-gray-400 block mb-1">
+                    <label className="text-xs font-medium text-gray-300 block mb-1.5">
                       Raw Bill Amount ({activeToken.symbol})
                     </label>
                     <input
@@ -419,12 +451,12 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                       value={billBaseAmount}
                       onChange={(e) => setBillBaseAmount(e.target.value)}
                       placeholder="120"
-                      className="w-full px-3 py-1.5 rounded-xl bg-gray-900/90 border border-gray-700 text-white font-mono text-xs focus:border-indigo-500 outline-none"
+                      className="w-full px-3.5 py-2 rounded-xl bg-gray-950/80 border border-gray-700/80 text-white font-mono text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-medium text-gray-400 block mb-1">
+                    <label className="text-xs font-medium text-gray-300 block mb-1.5">
                       Split Among (Friends)
                     </label>
                     <input
@@ -434,16 +466,16 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                       value={splitCount}
                       onChange={(e) => setSplitCount(e.target.value)}
                       placeholder="4"
-                      className="w-full px-3 py-1.5 rounded-xl bg-gray-900/90 border border-gray-700 text-white font-mono text-xs focus:border-indigo-500 outline-none"
+                      className="w-full px-3.5 py-2 rounded-xl bg-gray-950/80 border border-gray-700/80 text-white font-mono text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-medium text-gray-400 block mb-1">
+                  <label className="text-xs font-medium text-gray-300 block mb-1.5">
                     Tip / Service Buffer
                   </label>
-                  <div className="grid grid-cols-5 gap-1.5">
+                  <div className="grid grid-cols-5 gap-2">
                     {[0, 10, 15, 18, 20].map((pct) => (
                       <button
                         key={pct}
@@ -452,10 +484,10 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                           playClickSound();
                           setTipPercent(pct);
                         }}
-                        className={`py-1.5 rounded-lg text-xs font-semibold border transition ${
+                        className={`py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all ${
                           tipPercent === pct
-                            ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-                            : 'bg-[#0f121a] text-gray-400 border-[#1d2232] hover:text-white'
+                            ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
+                            : 'bg-[#0f121a] text-gray-400 border-gray-800 hover:text-white hover:border-gray-700'
                         }`}
                       >
                         {pct === 0 ? '0%' : `+${pct}%`}
@@ -465,8 +497,8 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                 </div>
 
                 {/* Calculation Result & Apply Button */}
-                <div className="p-2.5 rounded-xl bg-[#0c0f18] border border-indigo-950/80 flex flex-col sm:flex-row items-center justify-between gap-2">
-                  <div className="text-xs">
+                <div className="p-3 sm:p-3.5 rounded-xl bg-[#0c0f18] border border-indigo-950/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="text-xs sm:text-sm">
                     <span className="text-gray-400">Total: </span>
                     <strong className="text-white font-mono font-bold">${totalWithTip.toFixed(2)}</strong>
                     <span className="text-gray-500"> (Tip: ${tipAmount.toFixed(2)}) · </span>
@@ -477,11 +509,11 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                   <button
                     type="button"
                     onClick={handleApplySplitter}
-                    className="w-full sm:w-auto px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-1 transition shadow-sm"
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-1.5 transition-all shadow-md shadow-indigo-600/20 active:scale-95"
                   >
                     {splitterApplied ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                        <Check className="w-4 h-4 text-emerald-300" />
                         <span>Applied!</span>
                       </>
                     ) : (
@@ -520,27 +552,105 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
           </div>
 
           {/* FairShare: Expected Group Size / Participants */}
-          <div className="p-3.5 rounded-2xl bg-[#131722]/80 border border-[#212638] space-y-2">
+          <div className="p-4 rounded-2xl bg-[#131722]/90 border border-indigo-900/40 hover:border-indigo-500/30 transition-all space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-indigo-400" />
                 <span>FairShare: Group Size (Optional)</span>
               </label>
-              <span className="text-[10px] text-gray-400">Voluntary Guidance</span>
+              <span className="text-[10px] text-gray-400 font-mono">Voluntary Guidance</span>
             </div>
-            <input
-              type="number"
-              min="2"
-              max="500"
-              step="1"
-              value={expectedParticipants}
-              onChange={(e) => setExpectedParticipants(e.target.value)}
-              placeholder="e.g. 5 friends splitting"
-              className="w-full px-4 py-2 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 text-white outline-none text-xs transition-all"
-              disabled={isLoading}
-            />
+
+            <div className="relative flex items-center">
+              <input
+                type="number"
+                min="2"
+                max="500"
+                step="1"
+                value={expectedParticipants}
+                onChange={(e) => setExpectedParticipants(e.target.value)}
+                placeholder="e.g. 5 friends splitting"
+                className="w-full pl-4 pr-12 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white outline-none text-sm transition-all placeholder:text-gray-500"
+                disabled={isLoading}
+              />
+
+              {/* Custom Interactive Stepper Arrows */}
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col bg-[#0e1220] border border-indigo-900/80 hover:border-indigo-500/60 rounded-lg overflow-hidden shadow-sm transition">
+                <button
+                  type="button"
+                  aria-label="Increase headcount"
+                  onClick={() => {
+                    playClickSound();
+                    const current = parseInt(expectedParticipants || '0', 10);
+                    if (current < 2) {
+                      setExpectedParticipants('2');
+                    } else if (current < 500) {
+                      setExpectedParticipants(String(current + 1));
+                    }
+                  }}
+                  disabled={isLoading || parseInt(expectedParticipants || '0', 10) >= 500}
+                  className="w-7 h-4 flex items-center justify-center text-gray-400 hover:text-white hover:bg-indigo-600 transition-all active:scale-95 disabled:opacity-20 disabled:hover:bg-transparent"
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-full h-[1px] bg-indigo-950/80" />
+                <button
+                  type="button"
+                  aria-label="Decrease headcount"
+                  onClick={() => {
+                    playClickSound();
+                    const current = parseInt(expectedParticipants || '0', 10);
+                    if (current <= 2) {
+                      setExpectedParticipants('');
+                    } else {
+                      setExpectedParticipants(String(current - 1));
+                    }
+                  }}
+                  disabled={isLoading || !expectedParticipants || parseInt(expectedParticipants, 10) <= 2}
+                  className="w-7 h-4 flex items-center justify-center text-gray-400 hover:text-white hover:bg-indigo-600 transition-all active:scale-95 disabled:opacity-20 disabled:hover:bg-transparent"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Preset Pills for 1-Click Headcount */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              <span className="text-[11px] text-gray-400 font-mono mr-0.5">Quick:</span>
+              {[2, 3, 4, 5, 6, 8, 10].map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => {
+                    playClickSound();
+                    setExpectedParticipants(String(size));
+                  }}
+                  className={`px-2 py-0.5 rounded-lg text-xs font-mono font-semibold transition-all ${
+                    expectedParticipants === String(size)
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 ring-1 ring-indigo-400'
+                      : 'bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/60'
+                  }`}
+                >
+                  {size}p
+                </button>
+              ))}
+              {expectedParticipants && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playClickSound();
+                    setExpectedParticipants('');
+                  }}
+                  className="px-2 py-0.5 rounded-lg text-[11px] text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all font-mono"
+                  title="Clear headcount"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
             {suggestedShare && (
-              <div className="text-[11px] text-emerald-300 bg-emerald-950/40 border border-emerald-800/40 p-2.5 rounded-xl flex items-center justify-between">
+              <div className="text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-800/40 p-2.5 rounded-xl flex items-center justify-between">
                 <span>Suggested share per person:</span>
                 <span className="font-mono font-bold text-white">~{suggestedShare} {activeToken.symbol}</span>
               </div>

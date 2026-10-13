@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PlusCircle, Users, Scale, ArrowRight, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { SpotlightCard } from './SpotlightCard';
 
 interface HowItWorksProps {
   tokenSymbol?: string;
@@ -39,7 +40,12 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
           <div className="mt-4 pt-4 border-t border-[#171b28]">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
               {/* Step 1 */}
-              <div className="relative p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between">
+              <SpotlightCard
+                spotlightColor="rgba(99, 102, 241, 0.15)"
+                borderColor="rgba(129, 140, 248, 0.35)"
+                maxTilt={2}
+                className="p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between"
+              >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-mono font-bold text-indigo-400 bg-indigo-950/80 px-2 py-0.5 rounded">
@@ -57,10 +63,15 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
                 <div className="hidden md:flex justify-end pt-2 text-gray-600">
                   <ArrowRight className="w-4 h-4" />
                 </div>
-              </div>
+              </SpotlightCard>
 
               {/* Step 2 */}
-              <div className="relative p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between">
+              <SpotlightCard
+                spotlightColor="rgba(168, 85, 247, 0.15)"
+                borderColor="rgba(192, 132, 252, 0.35)"
+                maxTilt={2}
+                className="p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between"
+              >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-mono font-bold text-purple-400 bg-purple-950/80 px-2 py-0.5 rounded">
@@ -78,10 +89,15 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
                 <div className="hidden md:flex justify-end pt-2 text-gray-600">
                   <ArrowRight className="w-4 h-4" />
                 </div>
-              </div>
+              </SpotlightCard>
 
               {/* Step 3 */}
-              <div className="relative p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between">
+              <SpotlightCard
+                spotlightColor="rgba(16, 185, 129, 0.15)"
+                borderColor="rgba(52, 211, 153, 0.35)"
+                maxTilt={2}
+                className="p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between"
+              >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded">
@@ -101,7 +117,7 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
                     </p>
                   </div>
                 </div>
-              </div>
+              </SpotlightCard>
             </div>
 
             {/* Testnet & Conditions Footnote */}

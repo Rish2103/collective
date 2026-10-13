@@ -56,3 +56,7 @@ Thumbs.db
 # Local agent/assistant workflows and skills
 .agent/
 .agents/
+
+# Vercel deployment cache and artifacts
+.vercel/
+frontend/.vercel/

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="collectiveGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#9333ea"/>
+    </linearGradient>
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded brand squircle matching COLLECTIVE 2.0 theme -->
+  <rect x="2" y="2" width="60" height="60" rx="18" fill="url(#collectiveGrad)"/>
+  <rect x="2" y="2" width="60" height="60" rx="18" stroke="url(#borderGrad)" stroke-width="2"/>
+  <!-- Bold Modern C Glyph -->
+  <path d="M43 21C39.5 17.5 34.5 15.5 29 15.5C18.5 15.5 10 23.5 10 32C10 40.5 18.5 48.5 29 48.5C34.5 48.5 39.5 46.5 43 43" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

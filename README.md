@@ -217,12 +217,32 @@ npm run build
 
 ### 7. Run Browser E2E Tests
 
-Execute the headless Playwright browser test suite across 13 test scenarios:
+Execute the headless Playwright browser test suite across 15 test scenarios:
 
 ```bash
 npm run test:browser
 # or: npm --prefix frontend run test:browser
 ```
+
+### 8. Deploy to Vercel
+
+To deploy COLLECTIVE to Vercel:
+
+1. **Import Repository**: In the Vercel dashboard, click **Add New** > **Project** and select this repository.
+2. **Configure Project Settings**:
+   - **Framework Preset**: `Vite`
+   - **Root Directory**: `frontend` *(Click Edit and select the `frontend` folder)*
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+   - **Install Command**: `npm install` (uses `frontend/package-lock.json`)
+3. **Configure Environment Variables**:
+   Add the following public environment variables (all include safe in-app fallbacks to live Monad Testnet contracts):
+   - `VITE_MONAD_RPC_URL` = `https://testnet-rpc.monad.xyz`
+   - `VITE_MONAD_EXPLORER_URL` = `https://testnet.monadexplorer.com`
+   - `VITE_COLLECTIVE_POOL_ADDRESS` = `0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02`
+   - `VITE_MOCK_TOKEN_ADDRESS` = `0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6`
+   - `VITE_USDC_ADDRESS` = `0x534b2f3A21130d7a60830c2Df862319e593943A3`
+4. **Deploy**: Click **Deploy**. The build completes in ~8 seconds and serves via Vercel's global edge network.
 
 ---
 
@@ -238,6 +258,7 @@ All frontend variables use the `VITE_` prefix and are bundled into client-side c
 | `VITE_MONAD_EXPLORER_URL` | Monad Testnet block explorer URL | Optional | `https://testnet.monadexplorer.com` |
 | `VITE_COLLECTIVE_POOL_ADDRESS` | Deployed `CollectivePool` address | Optional | `0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02` |
 | `VITE_MOCK_TOKEN_ADDRESS` | Deployed `MockERC20` (mUSD) address | Optional | `0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6` |
+| `VITE_USDC_ADDRESS` | Deployed Native Circle USDC address (6 dec) | Optional | `0x534b2f3A21130d7a60830c2Df862319e593943A3` |
 
 ### Contracts Variables (`contracts/.env.example`)
 

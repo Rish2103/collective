@@ -22,11 +22,26 @@ async function runBrowserAudit() {
     shell: true,
   });
 
-  server.stdout.on('data', (d) => console.log(`[Vite] ${d.toString().trim()}`));
-  server.stderr.on('data', (d) => console.error(`[Vite Err] ${d.toString().trim()}`));
+  await new Promise((resolve) => {
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    }, 8000);
 
-  // Wait 3.5 seconds for server to boot
-  await new Promise((r) => setTimeout(r, 3500));
+    server.stdout.on('data', (d) => {
+      const msg = d.toString();
+      console.log(`[Vite] ${msg.trim()}`);
+      if (!resolved && (msg.includes('Local:') || msg.includes('http://localhost:5174'))) {
+        resolved = true;
+        clearTimeout(timeout);
+        setTimeout(resolve, 600);
+      }
+    });
+    server.stderr.on('data', (d) => console.error(`[Vite Err] ${d.toString().trim()}`));
+  });
 
   let browser;
   const consoleErrors = [];

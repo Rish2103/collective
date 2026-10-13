@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ethers } from 'ethers';
-import { CONTRACT_ADDRESSES, MONAD_TESTNET } from '../contracts/config';
+import { CONTRACT_ADDRESSES, MONAD_TESTNET, getTokenConfig } from '../contracts/config';
 import { CollectivePoolABI, MockERC20ABI } from '../contracts/abis';
 import { PoolData, PoolState } from '../types';
 import { parseWeb3Error } from '../utils/errorHandler';
+import { parseDescription, encodeDescription } from '../utils/metadata';
+import { parseTokenAmount } from '../utils/formatters';
 
 export function useCollective(account: string | null) {
   const [pools, setPools] = useState<PoolData[]>([]);
@@ -75,6 +77,8 @@ export function useCollective(account: string | null) {
           }
         }
 
+        const { cleanDescription, expectedParticipants } = parseDescription(poolRaw.description);
+
         loadedPools.push({
           id: Number(poolRaw.id),
           creator: poolRaw.creator,
@@ -86,6 +90,8 @@ export function useCollective(account: string | null) {
           state: poolState,
           title: poolRaw.title,
           description: poolRaw.description,
+          cleanDescription,
+          expectedParticipants,
           contributors,
           userContribution,
           remainingHeld,
@@ -95,7 +101,6 @@ export function useCollective(account: string | null) {
       setPools(loadedPools.reverse()); // Newest first
     } catch (err: any) {
       console.warn("Could not load pools from Monad RPC:", err);
-      // Fallback: don't crash UI, set error message if needed
     } finally {
       setIsLoading(false);
     }
@@ -105,8 +110,8 @@ export function useCollective(account: string | null) {
     loadPools();
   }, [loadPools]);
 
-  // Mint mock test tokens
-  const mintTestTokens = async (amountEther: string = "1000") => {
+  // Mint mock test tokens (mUSD faucet)
+  const mintTestTokens = async (amountStr: string = "1000") => {
     try {
       setActionLoading("minting");
       setActionStep("Submitting mint transaction to Monad Testnet...");
@@ -116,7 +121,7 @@ export function useCollective(account: string | null) {
       const signer = await getSigner();
       const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.mockToken, MockERC20ABI, signer);
       
-      const amount = ethers.parseEther(amountEther);
+      const amount = ethers.parseEther(amountStr);
       const tx = await tokenContract.mint(await signer.getAddress(), amount);
       setLastTxHash(tx.hash);
       setActionStep("Waiting for block confirmation on Monad...");
@@ -132,13 +137,15 @@ export function useCollective(account: string | null) {
     }
   };
 
-  // Create pool
+  // Create pool (token-aware, metadata-aware)
   const createPool = async (
+    tokenAddress: string,
     recipient: string,
-    targetAmountEther: string,
+    targetAmountFormatted: string,
     durationSeconds: number,
     title: string,
-    description: string
+    description: string,
+    expectedParticipants?: number | null
   ) => {
     try {
       setActionLoading("creating");
@@ -149,14 +156,17 @@ export function useCollective(account: string | null) {
       const signer = await getSigner();
       const poolContract = new ethers.Contract(CONTRACT_ADDRESSES.collectivePool, CollectivePoolABI, signer);
 
-      const targetAmount = ethers.parseEther(targetAmountEther);
+      const tokenConfig = getTokenConfig(tokenAddress);
+      const targetAmount = parseTokenAmount(targetAmountFormatted, tokenConfig.decimals);
+      const finalDescription = encodeDescription(description, expectedParticipants);
+
       const tx = await poolContract.createPool(
-        CONTRACT_ADDRESSES.mockToken,
+        tokenConfig.address,
         recipient,
         targetAmount,
         durationSeconds,
         title,
-        description
+        finalDescription
       );
       setLastTxHash(tx.hash);
       setActionStep("Confirming pool registration on-chain...");
@@ -173,26 +183,29 @@ export function useCollective(account: string | null) {
     }
   };
 
-  // 2-step contribute: approve if necessary, then contribute
-  const contributeToPool = async (poolId: number, amountEther: string) => {
+  // 2-step contribute: approve token if necessary, then contribute
+  const contributeToPool = async (poolId: number, amountFormatted: string) => {
     try {
       setError(null);
       setLastTxHash(null);
       const signer = await getSigner();
       const userAddress = await signer.getAddress();
-      const amount = ethers.parseEther(amountEther);
 
-      const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.mockToken, MockERC20ABI, signer);
+      const targetPool = pools.find((p) => p.id === poolId);
+      const tokenConfig = getTokenConfig(targetPool?.token);
+      const amount = parseTokenAmount(amountFormatted, tokenConfig.decimals);
+
+      const tokenContract = new ethers.Contract(tokenConfig.address, MockERC20ABI, signer);
       const poolContract = new ethers.Contract(CONTRACT_ADDRESSES.collectivePool, CollectivePoolABI, signer);
 
       // Step 1: Check allowance
       setActionLoading("checking_allowance");
-      setActionStep("Checking mUSD spending allowance...");
+      setActionStep(`Checking ${tokenConfig.symbol} spending allowance...`);
       const allowance: bigint = await tokenContract.allowance(userAddress, CONTRACT_ADDRESSES.collectivePool);
 
       if (allowance < amount) {
         setActionLoading("approving");
-        setActionStep("Step 1/2: Please approve token spending in your wallet...");
+        setActionStep(`Step 1/2: Please approve ${tokenConfig.symbol} spending in your wallet...`);
         const approveTx = await tokenContract.approve(CONTRACT_ADDRESSES.collectivePool, ethers.MaxUint256);
         setLastTxHash(approveTx.hash);
         setActionStep("Confirming token approval on Monad...");
@@ -201,17 +214,17 @@ export function useCollective(account: string | null) {
 
       // Step 2: Deposit
       setActionLoading("contributing");
-      setActionStep("Step 2/2: Depositing funds into pool...");
+      setActionStep(`Step 2/2: Depositing ${tokenConfig.symbol} into pool...`);
       const contributeTx = await poolContract.contribute(poolId, amount);
       setLastTxHash(contributeTx.hash);
       setActionStep("Confirming contribution on Monad...");
       await contributeTx.wait();
 
-      const amountWei = amount;
+      const amountUnits = amount;
       setPools((prev) =>
         prev.map((p) => {
           if (p.id === poolId) {
-            const newContributed = p.totalContributed + amountWei;
+            const newContributed = p.totalContributed + amountUnits;
             const contributors =
               account && !p.contributors.some((c) => c.toLowerCase() === account.toLowerCase())
                 ? [...p.contributors, account]
@@ -219,8 +232,8 @@ export function useCollective(account: string | null) {
             return {
               ...p,
               totalContributed: newContributed,
-              userContribution: (p.userContribution || 0n) + amountWei,
-              remainingHeld: (p.remainingHeld || 0n) + amountWei,
+              userContribution: (p.userContribution || 0n) + amountUnits,
+              remainingHeld: (p.remainingHeld || 0n) + amountUnits,
               contributors,
             };
           }
@@ -253,26 +266,17 @@ export function useCollective(account: string | null) {
 
       const tx = await poolContract.claimPayout(poolId);
       setLastTxHash(tx.hash);
-      setActionStep("Disbursing funds to recipient on Monad...");
+      setActionStep("Releasing funds to recipient on Monad...");
       await tx.wait();
 
       setPools((prev) =>
-        prev.map((p) => {
-          if (p.id === poolId) {
-            return {
-              ...p,
-              state: PoolState.PaidOut,
-              remainingHeld: 0n,
-            };
-          }
-          return p;
-        })
+        prev.map((p) => (p.id === poolId ? { ...p, state: PoolState.PaidOut, remainingHeld: 0n } : p))
       );
 
       await loadPools();
       return true;
     } catch (err: any) {
-      console.error("Payout error:", err);
+      console.error("Claim payout error:", err);
       setError(parseWeb3Error(err));
       return false;
     } finally {
@@ -281,11 +285,11 @@ export function useCollective(account: string | null) {
     }
   };
 
-  // Claim refund (when expired and under target)
+  // Claim refund (when deadline passed under target)
   const claimRefund = async (poolId: number) => {
     try {
       setActionLoading(`refund_${poolId}`);
-      setActionStep("Submitting 100% refund claim...");
+      setActionStep("Claiming refund from pool...");
       setError(null);
       setLastTxHash(null);
 
@@ -294,20 +298,17 @@ export function useCollective(account: string | null) {
 
       const tx = await poolContract.claimRefund(poolId);
       setLastTxHash(tx.hash);
-      setActionStep("Refunding your deposit directly to your wallet...");
+      setActionStep("Returning deposit to your wallet...");
       await tx.wait();
 
       setPools((prev) =>
         prev.map((p) => {
           if (p.id === poolId) {
-            const userRefund = p.userContribution || 0n;
+            const userDep = p.userContribution || 0n;
             return {
               ...p,
               userContribution: 0n,
-              remainingHeld:
-                p.remainingHeld && p.remainingHeld >= userRefund
-                  ? p.remainingHeld - userRefund
-                  : 0n,
+              remainingHeld: (p.remainingHeld || 0n) > userDep ? (p.remainingHeld || 0n) - userDep : 0n,
             };
           }
           return p;
@@ -317,7 +318,7 @@ export function useCollective(account: string | null) {
       await loadPools();
       return true;
     } catch (err: any) {
-      console.error("Refund error:", err);
+      console.error("Claim refund error:", err);
       setError(parseWeb3Error(err));
       return false;
     } finally {

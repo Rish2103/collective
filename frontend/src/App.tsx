@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { Navbar } from './components/Navbar';
 import { PoolCard } from './components/PoolCard';
@@ -10,10 +10,11 @@ import { ActivityTimeline } from './components/ActivityTimeline';
 import { PersonalDashboard } from './components/PersonalDashboard';
 import { HowItWorks } from './components/HowItWorks';
 import { ShareModal } from './components/ShareModal';
+import { OutcomeReceiptModal } from './components/OutcomeReceiptModal';
 import { TransactionFeedback, TransactionStatus } from './components/TransactionFeedback';
 import { useWallet } from './hooks/useWallet';
 import { useCollective } from './hooks/useCollective';
-import { useActivityTimeline, TimelineEvent } from './hooks/useActivityTimeline';
+import { useActivityTimeline } from './hooks/useActivityTimeline';
 import { PoolData, PoolState } from './types';
 import {
   PlusCircle,
@@ -30,8 +31,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { MONAD_TESTNET, CONTRACT_ADDRESSES, getExplorerAddressUrl } from './contracts/config';
-import { formatTokenAmount } from './utils/formatters';
+import { CONTRACT_ADDRESSES, getExplorerAddressUrl, getTokenConfig } from './contracts/config';
 import { playClickSound } from './utils/audioFeedback';
 
 export function App() {
@@ -44,6 +44,7 @@ export function App() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isTrustOpen, setIsTrustOpen] = useState(false);
   const [sharingPool, setSharingPool] = useState<PoolData | null>(null);
+  const [receiptPool, setReceiptPool] = useState<PoolData | null>(null);
 
   // View mode: 'pools' (default grid), 'activity' (timeline), 'portfolio' (my backed pools)
   const [viewMode, setViewMode] = useState<'pools' | 'activity' | 'portfolio'>('pools');
@@ -51,17 +52,20 @@ export function App() {
   // Direct pool routing & selection
   const [selectedPoolId, setSelectedPoolId] = useState<number | null>(null);
   const [initialUrlPoolId, setInitialUrlPoolId] = useState<number | null>(null);
+  const [initialUrlRescue, setInitialUrlRescue] = useState(false);
+  const [initialUrlReceipt, setInitialUrlReceipt] = useState(false);
+  const [isRescueMode, setIsRescueMode] = useState(false);
   const [notFoundNotice, setNotFoundNotice] = useState<string | null>(null);
 
   // Filter & Search
-  const [activeTab, setActiveTab] = useState<'all' | 'active' | 'success' | 'expired' | 'my-pools' | 'my-deposits'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'in-progress' | 'goal-secured' | 'settled' | 'refunds-open' | 'my-pools' | 'my-deposits'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'endingSoon' | 'mostFunded'>('newest');
 
   // Global Transaction Status for floating toast feedback
   const [txFeedback, setTxFeedback] = useState<TransactionStatus>({ state: 'idle' });
 
-  // 1. Read initial URL query param (?pool=<id>) on boot
+  // 1. Read initial URL query params (?pool=<id>&rescue=true&receipt=true) on boot
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -71,6 +75,12 @@ export function App() {
         if (!isNaN(id) && id >= 0) {
           setInitialUrlPoolId(id);
         }
+      }
+      if (params.get('rescue') === 'true') {
+        setInitialUrlRescue(true);
+      }
+      if (params.get('receipt') === 'true') {
+        setInitialUrlReceipt(true);
       }
     } catch (e) {
       // Ignore URL parsing errors
@@ -82,24 +92,33 @@ export function App() {
     if (initialUrlPoolId !== null && !collective.isLoading && collective.pools.length > 0) {
       const match = collective.pools.find((p) => p.id === initialUrlPoolId);
       if (match) {
-        setSelectedPoolId(initialUrlPoolId);
+        if (initialUrlReceipt) {
+          setReceiptPool(match);
+        } else {
+          setSelectedPoolId(initialUrlPoolId);
+          if (initialUrlRescue) {
+            setIsRescueMode(true);
+          }
+        }
       } else {
         setNotFoundNotice(`Pool #${initialUrlPoolId} was not found on Monad Testnet.`);
-        // Clean URL without refresh
         window.history.replaceState({}, '', window.location.pathname);
       }
-      setInitialUrlPoolId(null); // handled
+      setInitialUrlPoolId(null);
     }
-  }, [initialUrlPoolId, collective.isLoading, collective.pools]);
+  }, [initialUrlPoolId, initialUrlRescue, initialUrlReceipt, collective.isLoading, collective.pools]);
 
-  // 3. Synchronize selectedPoolId with URL query param (?pool=<id>)
+  // 3. Synchronize selectedPoolId and receiptPool with URL query params
   useEffect(() => {
-    if (selectedPoolId !== null) {
-      window.history.replaceState({}, '', `${window.location.pathname}?pool=${selectedPoolId}`);
+    if (receiptPool !== null) {
+      window.history.replaceState({}, '', `${window.location.pathname}?pool=${receiptPool.id}&receipt=true`);
+    } else if (selectedPoolId !== null) {
+      const rescueQuery = isRescueMode ? '&rescue=true' : '';
+      window.history.replaceState({}, '', `${window.location.pathname}?pool=${selectedPoolId}${rescueQuery}`);
     } else if (initialUrlPoolId === null) {
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, [selectedPoolId, initialUrlPoolId]);
+  }, [selectedPoolId, isRescueMode, receiptPool, initialUrlPoolId]);
 
   // Derive reactive selected pool
   const selectedPool = useMemo(() => {
@@ -126,12 +145,14 @@ export function App() {
           if (!isCreator && !isContributor) return false;
         }
 
-        // Tab filter
-        if (activeTab === 'active') {
-          if (isExpired || isPaid) return false;
-        } else if (activeTab === 'success') {
-          if (!isPaid && !isTargetMet) return false;
-        } else if (activeTab === 'expired') {
+        // 4 Clear Status Filter Tabs
+        if (activeTab === 'in-progress') {
+          if (isExpired || isTargetMet || isPaid) return false;
+        } else if (activeTab === 'goal-secured') {
+          if (!isTargetMet || isPaid) return false;
+        } else if (activeTab === 'settled') {
+          if (!isPaid) return false;
+        } else if (activeTab === 'refunds-open') {
           if (!isExpired || isTargetMet || isPaid) return false;
         } else if (activeTab === 'my-pools') {
           if (!isCreator) return false;
@@ -145,7 +166,7 @@ export function App() {
           const matchTitle = p.title.toLowerCase().includes(q);
           const matchRecipient = p.recipient.toLowerCase().includes(q);
           const matchCreator = p.creator.toLowerCase().includes(q);
-          const matchDesc = p.description.toLowerCase().includes(q);
+          const matchDesc = (p.cleanDescription || p.description).toLowerCase().includes(q);
           if (!matchTitle && !matchRecipient && !matchCreator && !matchDesc) return false;
         }
 
@@ -170,46 +191,33 @@ export function App() {
   // Aggregate platform statistics computed 100% from on-chain pools
   const stats = useMemo(() => {
     const totalCount = collective.pools.length;
-    let totalContributedWei = 0n;
-    let currentHeldWei = 0n;
-    let totalDisbursedWei = 0n;
-    let activeCount = 0;
-    let successfulCount = 0;
-    let expiredRefundCount = 0;
+    let inProgressCount = 0;
+    let goalSecuredCount = 0;
+    let settledCount = 0;
+    let refundsOpenCount = 0;
 
     for (const p of collective.pools) {
-      totalContributedWei += p.totalContributed;
-      if (p.remainingHeld !== undefined) {
-        currentHeldWei += p.remainingHeld;
-      } else if (p.state === PoolState.Active) {
-        currentHeldWei += p.totalContributed;
-      }
-
-      if (p.state === PoolState.PaidOut) {
-        totalDisbursedWei += p.totalContributed;
-      }
-
+      const isPaid = p.state === PoolState.PaidOut;
       const isTargetMet = p.totalContributed >= p.targetAmount && p.targetAmount > 0n;
       const isExpired = p.deadline <= now;
-      if (!isExpired && p.state === PoolState.Active) {
-        activeCount++;
-      }
-      if (p.state === PoolState.PaidOut || isTargetMet) {
-        successfulCount++;
-      }
-      if (isExpired && !isTargetMet && p.state !== PoolState.PaidOut) {
-        expiredRefundCount++;
+
+      if (isPaid) {
+        settledCount++;
+      } else if (isTargetMet) {
+        goalSecuredCount++;
+      } else if (isExpired) {
+        refundsOpenCount++;
+      } else {
+        inProgressCount++;
       }
     }
 
     return {
       totalCount,
-      totalPooledEth: formatTokenAmount(totalContributedWei),
-      currentHeldEth: formatTokenAmount(currentHeldWei),
-      totalDisbursedEth: formatTokenAmount(totalDisbursedWei),
-      activeCount,
-      successfulCount,
-      expiredRefundCount,
+      inProgressCount,
+      goalSecuredCount,
+      settledCount,
+      refundsOpenCount,
     };
   }, [collective.pools, now]);
 
@@ -217,7 +225,7 @@ export function App() {
   const handleMint = async (amount: string) => {
     setTxFeedback({
       state: 'awaiting_wallet',
-      title: 'Awaiting Signature',
+      title: 'Awaiting Confirmation',
       message: `Please confirm minting ${amount} ${wallet.tokenSymbol} in your wallet...`,
     });
 
@@ -234,17 +242,20 @@ export function App() {
       setTxFeedback({
         state: 'error',
         title: 'Minting Failed',
-        message: collective.error || 'The faucet transaction was cancelled or reverted.',
+        message: collective.error || 'The test token transaction was cancelled or reverted.',
       });
     }
     return ok;
   };
 
   const handleContribute = async (poolId: number, amount: string) => {
+    const pool = collective.pools.find(p => p.id === poolId);
+    const token = getTokenConfig(pool?.token);
+
     setTxFeedback({
       state: 'awaiting_wallet',
       title: 'Backing Pool',
-      message: `Approving and depositing ${amount} ${wallet.tokenSymbol}...`,
+      message: `Approving and depositing ${amount} ${token.symbol}...`,
     });
 
     const ok = await collective.contributeToPool(poolId, amount);
@@ -253,7 +264,7 @@ export function App() {
       setTxFeedback({
         state: 'confirmed',
         title: 'Contribution Confirmed!',
-        message: `Deposited ${amount} ${wallet.tokenSymbol} into Pool #${poolId}.`,
+        message: `Deposited ${amount} ${token.symbol} into Pool #${poolId}.`,
         txHash: collective.lastTxHash,
       });
 
@@ -263,7 +274,7 @@ export function App() {
           type: 'ContributionMade',
           poolId,
           account: wallet.account,
-          amount: ethers.parseEther(amount),
+          amount: ethers.parseUnits(amount, token.decimals),
           txHash: collective.lastTxHash,
           blockNumber: 0,
           timestamp: Math.floor(Date.now() / 1000),
@@ -282,7 +293,7 @@ export function App() {
   const handleClaimPayout = async (poolId: number) => {
     setTxFeedback({
       state: 'awaiting_wallet',
-      title: 'Disbursing Funds',
+      title: 'Releasing Funds',
       message: 'Releasing pool funds to designated recipient...',
     });
 
@@ -291,7 +302,7 @@ export function App() {
       wallet.refreshBalance();
       setTxFeedback({
         state: 'confirmed',
-        title: 'Payout Released!',
+        title: 'Funds Released!',
         message: `Funds from Pool #${poolId} have been disbursed to the recipient.`,
         txHash: collective.lastTxHash,
       });
@@ -368,6 +379,7 @@ export function App() {
         isCorrectNetwork={wallet.isCorrectNetwork}
         tokenBalance={wallet.tokenBalance}
         tokenSymbol={wallet.tokenSymbol}
+        balances={wallet.balances}
         isConnecting={wallet.isConnecting}
         onConnect={wallet.connectWallet}
         onSwitchNetwork={wallet.switchToMonad}
@@ -430,15 +442,15 @@ export function App() {
           <div className="max-w-3xl mx-auto space-y-4">
             <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/25 text-xs font-semibold">
               <Zap className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Metropolis Consumer Products & Payments • Monad Testnet</span>
+              <span>Consumer Group Payments with Guaranteed Refunds • Monad Testnet</span>
             </div>
 
             <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white leading-[1.15]">
-              Group Payments with <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-300 to-indigo-200">Guaranteed Pull Refunds</span>
+              Group Payments with <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-300 to-indigo-200">Guaranteed 100% Refunds</span>
             </h1>
 
             <p className="text-sm sm:text-base text-gray-300 max-w-2xl mx-auto leading-relaxed">
-              Create a group funding pool for team dinners, group travel, community gifts, or shared projects. If the target is met before the deadline, funds unlock for the recipient. If underfunded, contributors pull back 100% of their deposits trustlessly.
+              Create a group pot for team dinners, shared travel, community gifts, or collaborative projects. Supports native Circle USDC and test mUSD. If the goal is met, funds unlock for the recipient. If time runs out under target, every contributor pulls back 100% of their money with one click.
             </p>
 
             <div className="pt-3 flex flex-wrap items-center justify-center gap-3">
@@ -461,7 +473,7 @@ export function App() {
                 className="px-6 py-3.5 rounded-2xl font-bold text-sm bg-[#121622] hover:bg-[#1a2030] text-indigo-200 border border-indigo-800/40 flex items-center space-x-2 transition-all"
               >
                 <Droplets className="w-4 h-4 text-indigo-400" />
-                <span>Claim Free Test {wallet.tokenSymbol}</span>
+                <span>Claim Test Tokens</span>
               </button>
 
               <button
@@ -472,7 +484,7 @@ export function App() {
                 className="px-5 py-3.5 rounded-2xl font-semibold text-sm bg-[#121622] hover:bg-[#1a2030] text-gray-300 hover:text-white border border-[#20273a] flex items-center space-x-2 transition-all"
               >
                 <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                <span>Protocol Rules</span>
+                <span>Safety & Rules</span>
               </button>
             </div>
           </div>
@@ -486,21 +498,21 @@ export function App() {
             </div>
 
             <div className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left">
-              <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Cumulative Volume</span>
-              <span className="font-mono text-2xl font-black text-indigo-300">{stats.totalPooledEth}</span>
-              <span className="text-[10px] text-gray-400 block mt-0.5">All-time historical {wallet.tokenSymbol}</span>
+              <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Funding in Progress</span>
+              <span className="font-mono text-2xl font-black text-indigo-300">{stats.inProgressCount}</span>
+              <span className="text-[10px] text-gray-400 block mt-0.5">Active pots</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left">
-              <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Current Escrow</span>
-              <span className="font-mono text-2xl font-black text-white">{stats.currentHeldEth}</span>
-              <span className="text-[10px] text-emerald-400 block mt-0.5">{wallet.tokenSymbol} active & pending</span>
+              <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Goal Secured</span>
+              <span className="font-mono text-2xl font-black text-white">{stats.goalSecuredCount}</span>
+              <span className="text-[10px] text-emerald-400 block mt-0.5">100% target reached</span>
             </div>
 
             <div className="p-4 rounded-2xl bg-[#0e111a]/80 border border-[#1e2333] text-left">
-              <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Disbursed Payouts</span>
-              <span className="font-mono text-2xl font-black text-emerald-400">{stats.totalDisbursedEth}</span>
-              <span className="text-[10px] text-gray-400 block mt-0.5">{wallet.tokenSymbol} released to recipients</span>
+              <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-medium">Settled Goals</span>
+              <span className="font-mono text-2xl font-black text-emerald-400">{stats.settledCount}</span>
+              <span className="text-[10px] text-gray-400 block mt-0.5">Released to recipients</span>
             </div>
           </div>
 
@@ -620,13 +632,16 @@ export function App() {
                         <PoolCard
                           key={pool.id}
                           pool={pool}
-                          tokenSymbol={wallet.tokenSymbol}
                           account={wallet.account}
-                          onSelect={(p) => setSelectedPoolId(p.id)}
+                          onSelect={(p) => {
+                            setIsRescueMode(false);
+                            setSelectedPoolId(p.id);
+                          }}
                           onClaimPayout={handleClaimPayout}
                           onClaimRefund={handleClaimRefund}
                           actionLoading={collective.actionLoading}
                           onOpenShare={(p) => setSharingPool(p)}
+                          onOpenReceipt={(p) => setReceiptPool(p)}
                         />
                       ))}
                     </div>
@@ -641,13 +656,14 @@ export function App() {
             <div className="space-y-5">
               {/* Filter Tabs & Search Bar */}
               <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-                {/* Filter Tabs */}
+                {/* 4 Clear Distinct Lifecycle Tabs */}
                 <div className="flex items-center space-x-1 p-1 bg-[#0e111a] rounded-2xl border border-[#1e2333] overflow-x-auto">
                   {[
                     { key: 'all', label: `All Pools (${collective.pools.length})` },
-                    { key: 'active', label: `Active (${stats.activeCount})` },
-                    { key: 'success', label: `Goal Met (${stats.successfulCount})` },
-                    { key: 'expired', label: `Refunds Open (${stats.expiredRefundCount})` },
+                    { key: 'in-progress', label: `In Progress (${stats.inProgressCount})` },
+                    { key: 'goal-secured', label: `Goal Secured (${stats.goalSecuredCount})` },
+                    { key: 'settled', label: `Settled (${stats.settledCount})` },
+                    { key: 'refunds-open', label: `Refunds Open (${stats.refundsOpenCount})` },
                     ...(wallet.account
                       ? [
                           { key: 'my-pools', label: 'Created by Me' },
@@ -715,8 +731,14 @@ export function App() {
                   <h3 className="text-base font-bold text-white mb-1">
                     {searchQuery
                       ? 'No pools match your search query'
-                      : activeTab === 'active'
-                      ? 'No Active Funding Pools Right Now'
+                      : activeTab === 'in-progress'
+                      ? 'No Active Funding Pools in Progress'
+                      : activeTab === 'goal-secured'
+                      ? 'No Goals Secured Yet'
+                      : activeTab === 'settled'
+                      ? 'No Pools Settled Yet'
+                      : activeTab === 'refunds-open'
+                      ? 'No Pools Currently in Refund State'
                       : activeTab === 'my-pools'
                       ? 'No Pools Created by Connected Wallet'
                       : activeTab === 'my-deposits'
@@ -726,13 +748,7 @@ export function App() {
                   <p className="text-xs text-gray-400 max-w-md mx-auto mb-5 leading-relaxed">
                     {searchQuery
                       ? `No funding pools match "${searchQuery}". Clear your search or launch a new pool.`
-                      : activeTab === 'active'
-                      ? 'All existing pools on Monad Testnet have reached their goals or concluded their deadlines. Start a new pool in seconds to demonstrate live contributions!'
-                      : activeTab === 'my-pools'
-                      ? 'You have not initiated any pools yet with this wallet address. Click below to launch one in seconds.'
-                      : activeTab === 'my-deposits'
-                      ? 'This wallet has not deposited into any pool yet. Claim free test tokens from the faucet to back a pool!'
-                      : 'Launch a group funding pool for your friends or team on Monad Testnet today!'}
+                      : 'Launch a group funding pot for your friends or team on Monad Testnet today!'}
                   </p>
                   <div className="flex items-center justify-center gap-3">
                     {searchQuery && (
@@ -757,13 +773,16 @@ export function App() {
                     <PoolCard
                       key={pool.id}
                       pool={pool}
-                      tokenSymbol={wallet.tokenSymbol}
                       account={wallet.account}
-                      onSelect={(p) => setSelectedPoolId(p.id)}
+                      onSelect={(p) => {
+                        setIsRescueMode(false);
+                        setSelectedPoolId(p.id);
+                      }}
                       onClaimPayout={handleClaimPayout}
                       onClaimRefund={handleClaimRefund}
                       actionLoading={collective.actionLoading}
                       onOpenShare={(p) => setSharingPool(p)}
+                      onOpenReceipt={(p) => setReceiptPool(p)}
                     />
                   ))}
                 </div>
@@ -783,9 +802,12 @@ export function App() {
                 <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-950 border border-indigo-800/40 text-indigo-300">
                   Monad Testnet 10143
                 </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-950 border border-emerald-800/40 text-emerald-300">
+                  Native USDC + mUSD
+                </span>
               </div>
               <p className="text-[11px] text-gray-400 mt-1">
-                Consumer Group Payments with Guaranteed Pull Refunds • Metropolis Hackathon Track
+                Consumer Group Payments with Guaranteed Pull Refunds • Open Source MIT License (2026)
               </p>
             </div>
 
@@ -795,7 +817,7 @@ export function App() {
                 className="text-gray-300 hover:text-white inline-flex items-center space-x-1"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Protocol Verification</span>
+                <span>Safety & Rules</span>
               </button>
               <a
                 href={getExplorerAddressUrl(CONTRACT_ADDRESSES.collectivePool)}
@@ -804,6 +826,15 @@ export function App() {
                 className="text-indigo-400 hover:text-indigo-300 inline-flex items-center space-x-1"
               >
                 <span>Pool Contract</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+              <a
+                href={getExplorerAddressUrl(CONTRACT_ADDRESSES.usdc)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-emerald-400 hover:text-emerald-300 inline-flex items-center space-x-1"
+              >
+                <span>Circle USDC</span>
                 <ExternalLink className="w-3 h-3" />
               </a>
               <a
@@ -818,7 +849,7 @@ export function App() {
             </div>
           </div>
           <p className="text-[11px] text-gray-500 text-center sm:text-left pt-2 border-t border-[#121622]">
-            mUSD and MON are testnet tokens with zero fiat value, intended strictly for developer demonstration on Monad Testnet.
+            mUSD, USDC, and MON on Monad Testnet are test tokens with zero fiat value, intended strictly for developer demonstration on Monad Testnet.
           </p>
         </div>
       </footer>
@@ -862,9 +893,9 @@ export function App() {
         isOpen={selectedPoolId !== null}
         onClose={() => {
           setSelectedPoolId(null);
+          setIsRescueMode(false);
           collective.clearError();
         }}
-        tokenSymbol={wallet.tokenSymbol}
         account={wallet.account}
         onContribute={handleContribute}
         onClaimPayout={handleClaimPayout}
@@ -878,8 +909,10 @@ export function App() {
           setSelectedPoolId(null);
           setIsFaucetOpen(true);
         }}
-        tokenBalance={wallet.tokenBalance}
+        tokenBalance={wallet.getTokenBalance(selectedPool?.token)}
         onOpenShare={(p) => setSharingPool(p)}
+        onOpenReceipt={(p) => setReceiptPool(p)}
+        isRescueRequested={isRescueMode}
       />
 
       {/* Enhanced Share & QR Drawer Modal */}
@@ -888,6 +921,19 @@ export function App() {
         onClose={() => setSharingPool(null)}
         pool={sharingPool}
         tokenSymbol={wallet.tokenSymbol}
+      />
+
+      {/* Verifiable Outcome Receipt Modal */}
+      <OutcomeReceiptModal
+        isOpen={receiptPool !== null}
+        onClose={() => setReceiptPool(null)}
+        pool={receiptPool}
+        account={wallet.account}
+        payoutTxHash={
+          receiptPool
+            ? timeline.events.find((e) => e.poolId === receiptPool.id && e.type === 'PayoutClaimed')?.txHash
+            : null
+        }
       />
     </div>
   );

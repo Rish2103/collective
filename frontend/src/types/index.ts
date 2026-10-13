@@ -18,6 +18,9 @@ export interface PoolData {
   contributors: string[];
   userContribution?: bigint;
   remainingHeld?: bigint;
+  // Parsed metadata fields (backward compatible)
+  cleanDescription?: string;
+  expectedParticipants?: number;
 }
 
 export interface WalletState {
@@ -27,4 +30,22 @@ export interface WalletState {
   isCorrectNetwork: boolean;
   tokenBalance: bigint;
   tokenSymbol: string;
+  balances?: Record<string, bigint>;
+}
+
+export interface OutcomeReceiptData {
+  pool: PoolData;
+  type: 'settled' | 'expired_refunding' | 'goal_secured';
+  payoutTxHash?: string | null;
+  recipientAddress: string;
+  totalRaised: bigint;
+  targetAmount: bigint;
+  surplusAmount: bigint;
+  backersCount: number;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  userContribution: bigint;
+  userRefundClaimed?: boolean;
+  remainingUnclaimedHeld?: bigint;
+  timestamp: number;
 }

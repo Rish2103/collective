@@ -51,7 +51,7 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
                   </div>
                   <h4 className="text-sm font-bold text-white">Create a Funding Pool</h4>
                   <p className="text-xs text-gray-400 leading-relaxed">
-                    Set a purpose, funding target ({tokenSymbol}), expiration deadline, and designated recipient. Non-custodial escrow is deployed directly to the smart contract.
+                    Set a purpose, funding goal ({tokenSymbol} or Circle USDC), a countdown timer, and who receives the money. Funds are kept in an automated, tamper-proof digital lockbox.
                   </p>
                 </div>
                 <div className="hidden md:flex justify-end pt-2 text-gray-600">
@@ -72,7 +72,7 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
                   </div>
                   <h4 className="text-sm font-bold text-white">Back It Together</h4>
                   <p className="text-xs text-gray-400 leading-relaxed">
-                    Friends and participants deposit test {tokenSymbol} via wallet transactions on Monad Testnet. Every contribution is tracked individually on-chain.
+                    Share your pool link. Friends connect their wallet and chip in whatever amount they want. Optional FairShare guidance helps split the bill equally.
                   </p>
                 </div>
                 <div className="hidden md:flex justify-end pt-2 text-gray-600">
@@ -94,10 +94,10 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
                   <h4 className="text-sm font-bold text-white">Resolve Transparently</h4>
                   <div className="text-xs text-gray-400 space-y-1.5 leading-relaxed">
                     <p>
-                      <strong className="text-emerald-300">Target Reached:</strong> Recipient claims 100% of pooled funds.
+                      <strong className="text-emerald-300">Goal Reached:</strong> Recipient collects 100% of the funds to pay for the event.
                     </p>
                     <p>
-                      <strong className="text-rose-300">Underfunded at Expiry:</strong> Each contributor pulls back 100% of their deposit trustlessly.
+                      <strong className="text-rose-300">Goal Not Reached:</strong> Time runs out? Every backer pulls back 100% of their money immediately with one click.
                     </p>
                   </div>
                 </div>
@@ -109,7 +109,7 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
               <div className="flex items-center space-x-1.5">
                 <Info className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
                 <span>
-                  Refunds use the secure pull pattern (claimable individually by contributing wallets). {tokenSymbol} is a test token on Monad Testnet (Chain ID 10143) with zero fiat value.
+                  Refunds use the secure pull pattern: contributors claim their own refunds directly to prevent stuck funds. Supports test tokens (mUSD) and official Circle USDC on Monad Testnet (Chain ID 10143).
                 </span>
               </div>
             </div>

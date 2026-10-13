@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ethers } from 'ethers';
 import {
   X,
   User,
@@ -10,7 +11,6 @@ import {
   Award,
   AlertCircle,
   ExternalLink,
-  Info,
   CheckCircle2,
   Share2,
   Check,
@@ -18,17 +18,21 @@ import {
   Coins,
   Sparkles,
   Users,
+  Zap,
+  FileText,
+  TrendingUp,
 } from 'lucide-react';
 import { PoolData, PoolState } from '../types';
-import { getExplorerAddressUrl, getExplorerTxUrl } from '../contracts/config';
+import { getExplorerAddressUrl, getExplorerTxUrl, getTokenConfig } from '../contracts/config';
 import { formatTokenAmount, shortenAddress, formatDeadline } from '../utils/formatters';
 import { playCopyChime } from '../utils/audioFeedback';
+import { calculateFairShare, calculateFundingPace } from '../utils/metadata';
 
 interface PoolDetailsModalProps {
   pool: PoolData | null;
   isOpen: boolean;
   onClose: () => void;
-  tokenSymbol: string;
+  tokenSymbol?: string;
   account: string | null;
   onContribute: (poolId: number, amount: string) => Promise<boolean>;
   onClaimPayout: (poolId: number) => Promise<boolean>;
@@ -41,13 +45,14 @@ interface PoolDetailsModalProps {
   onOpenFaucet: () => void;
   tokenBalance: bigint;
   onOpenShare?: (pool: PoolData) => void;
+  onOpenReceipt?: (pool: PoolData) => void;
+  isRescueRequested?: boolean;
 }
 
 export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
   pool,
   isOpen,
   onClose,
-  tokenSymbol,
   account,
   onContribute,
   onClaimPayout,
@@ -60,13 +65,18 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
   onOpenFaucet,
   tokenBalance,
   onOpenShare,
+  onOpenReceipt,
+  isRescueRequested = false,
 }) => {
   const [contributionAmount, setContributionAmount] = useState('100');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [localRefundSuccess, setLocalRefundSuccess] = useState(false);
   const [localPayoutSuccess, setLocalPayoutSuccess] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedRescueLink, setCopiedRescueLink] = useState(false);
   const [copiedAddr, setCopiedAddr] = useState<string | null>(null);
+
+  const tokenConfig = getTokenConfig(pool?.token);
 
   // Reset local state when pool id changes or modal opens
   useEffect(() => {
@@ -74,6 +84,7 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
     setLocalPayoutSuccess(false);
     setValidationError(null);
     setCopiedLink(false);
+    setCopiedRescueLink(false);
   }, [pool?.id, isOpen]);
 
   // Handle escape key
@@ -113,6 +124,14 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
   const isRecipient = account && pool.recipient.toLowerCase() === account.toLowerCase();
   const wasContributor = account ? pool.contributors.some(c => c.toLowerCase() === account.toLowerCase()) : false;
 
+  // FairShare Calculation
+  const fairShare = calculateFairShare(targetWei, pool.expectedParticipants, pool.userContribution);
+
+  // Funding Pace Calculation
+  const pace = calculateFundingPace(targetWei, contributedWei, pool.deadline);
+  const remainingNeededFormatted = formatTokenAmount(pace.remainingNeededWei, tokenConfig.decimals);
+  const remainingNeededClean = ethers.formatUnits(pace.remainingNeededWei, tokenConfig.decimals);
+
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedAddr(id);
@@ -126,18 +145,6 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
       return;
     }
     const shareUrl = `${window.location.origin}${window.location.pathname}?pool=${pool.id}`;
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `COLLECTIVE: ${pool.title}`,
-          text: `Support this pool on Monad Testnet: "${pool.title}"`,
-          url: shareUrl,
-        });
-        return;
-      } catch (err) {
-        // Fallback to clipboard
-      }
-    }
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopiedLink(true);
@@ -148,57 +155,82 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
     }
   };
 
+  const handleCopyRescueLink = async () => {
+    const rescueUrl = `${window.location.origin}${window.location.pathname}?pool=${pool.id}&rescue=true`;
+    try {
+      await navigator.clipboard.writeText(rescueUrl);
+      setCopiedRescueLink(true);
+      playCopyChime();
+      setTimeout(() => setCopiedRescueLink(false), 2000);
+    } catch (err) {
+      console.warn('Clipboard write failed:', err);
+    }
+  };
+
+  const handleRescueGoalClick = () => {
+    if (pace.remainingNeededWei > 0n) {
+      setContributionAmount(remainingNeededClean);
+    }
+  };
+
   const handleContributeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
-    if (onClearError) onClearError();
-
+    if (!account) {
+      setValidationError("Please connect your wallet first.");
+      return;
+    }
     const amountNum = parseFloat(contributionAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      setValidationError("Please enter an amount greater than zero.");
+      setValidationError("Contribution must be greater than zero.");
       return;
     }
 
-    const maxBalEth = parseFloat(formatTokenAmount(tokenBalance));
-    if (amountNum > maxBalEth) {
-      setValidationError(`Insufficient ${tokenSymbol} balance. You have ${formatTokenAmount(tokenBalance)} ${tokenSymbol}.`);
-      return;
-    }
-
-    const success = await onContribute(pool.id, contributionAmount);
-    if (success) {
+    const ok = await onContribute(pool.id, contributionAmount);
+    if (ok) {
       setContributionAmount('100');
     }
   };
 
-  const handleClaimRefundClick = async () => {
-    if (onClearError) onClearError();
-    const success = await onClaimRefund(pool.id);
-    if (success) {
-      setLocalRefundSuccess(true);
-    }
-  };
-
   const handleClaimPayoutClick = async () => {
-    if (onClearError) onClearError();
-    const success = await onClaimPayout(pool.id);
-    if (success) {
+    const ok = await onClaimPayout(pool.id);
+    if (ok) {
       setLocalPayoutSuccess(true);
     }
   };
 
+  const handleClaimRefundClick = async () => {
+    const ok = await onClaimRefund(pool.id);
+    if (ok) {
+      setLocalRefundSuccess(true);
+    }
+  };
+
+  const displayDescription = pool.cleanDescription || pool.description || "No description provided.";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div
-        className="relative w-full max-w-2xl bg-[#0b0e17] border border-[#1e2333] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 md:p-6 border-b border-[#1e2333] bg-[#0e121d]">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-950/60 border border-indigo-800/40 px-2.5 py-1 rounded-lg">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pool-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+    >
+      <div className="relative w-full max-w-2xl bg-[#0b0e17] border border-[#1e2333] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Modal Top Bar */}
+        <div className="flex items-center justify-between p-5 border-b border-[#1e2333] bg-[#0e121d]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-950/70 border border-indigo-800/40 px-2.5 py-1 rounded-lg">
               Pool #{pool.id}
             </span>
+
+            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+              tokenConfig.isNativeUsdc
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
+                : 'bg-indigo-950/60 text-indigo-300 border-indigo-800/40'
+            }`}>
+              {tokenConfig.symbol}
+            </span>
+
             {isCreator && (
               <span className="text-xs font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2.5 py-0.5 rounded-md">
                 Created by You
@@ -206,13 +238,23 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
             )}
             {isRecipient && !isCreator && (
               <span className="text-xs font-semibold text-cyan-300 bg-cyan-950/60 border border-cyan-800/40 px-2.5 py-0.5 rounded-md">
-                You are Recipient
+                Recipient
               </span>
             )}
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Share Link Button */}
+            {(isPaidOut || isRefunding) && onOpenReceipt && (
+              <button
+                onClick={() => onOpenReceipt(pool)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-indigo-950/60 text-indigo-300 hover:text-white border border-indigo-800/50 hover:bg-indigo-900/80 transition"
+                title="View verified on-chain outcome receipt"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Outcome Receipt</span>
+              </button>
+            )}
+
             <button
               onClick={handleShare}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl bg-[#161b28] hover:bg-[#20273a] text-gray-300 hover:text-white border border-[#273046] transition"
@@ -234,14 +276,37 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-5 md:p-6 space-y-6 overflow-y-auto custom-scrollbar">
+        <div className="p-5 md:p-6 space-y-5 overflow-y-auto custom-scrollbar">
+          {/* Goal Rescue Alert Banner if rescue mode is triggered */}
+          {isRescueRequested && pace.remainingNeededWei > 0n && isActive && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-950/60 to-indigo-950/60 border border-amber-500/50 flex items-center justify-between text-amber-200 text-xs shadow-lg">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 shrink-0">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-white text-sm">Goal Rescue Mode Active</h4>
+                  <p className="text-amber-200/90 mt-0.5">
+                    This pool is just <strong>{remainingNeededFormatted} {tokenConfig.symbol}</strong> away from hitting its goal! You can rescue this goal below with one click.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleRescueGoalClick}
+                className="px-3 py-1.5 rounded-xl font-bold bg-amber-500 hover:bg-amber-400 text-black text-xs shrink-0 ml-3 transition"
+              >
+                Match Gap
+              </button>
+            </div>
+          )}
+
           {/* Title & Description */}
           <div>
-            <h3 className="text-2xl font-black text-white tracking-tight leading-snug">
+            <h3 id="pool-modal-title" className="text-2xl font-black text-white tracking-tight leading-snug">
               {pool.title}
             </h3>
             <p className="text-sm text-gray-300 mt-2 leading-relaxed">
-              {pool.description || "No detailed description provided for this pool."}
+              {displayDescription}
             </p>
           </div>
 
@@ -252,10 +317,10 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                 <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider block">Total Raised</span>
                 <div className="flex items-baseline gap-2 mt-0.5">
                   <span className="font-mono text-3xl font-black text-white">
-                    {formatTokenAmount(contributedWei)}
+                    {formatTokenAmount(contributedWei, tokenConfig.decimals)}
                   </span>
                   <span className="text-sm font-semibold text-gray-400">
-                    of {formatTokenAmount(targetWei)} {tokenSymbol} target
+                    of {formatTokenAmount(targetWei, tokenConfig.decimals)} {tokenConfig.symbol} target
                   </span>
                 </div>
               </div>
@@ -263,8 +328,8 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                 <span className="font-mono text-2xl font-bold text-indigo-400">{percentNumber}%</span>
                 <span className="text-xs text-gray-400 block">
                   {contributedWei < targetWei
-                    ? `${formatTokenAmount(targetWei - contributedWei)} ${tokenSymbol} remaining`
-                    : 'Target Achieved!'}
+                    ? `${remainingNeededFormatted} ${tokenConfig.symbol} remaining`
+                    : 'Goal Secured!'}
                 </span>
               </div>
             </div>
@@ -290,14 +355,14 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
               <div className="p-3 rounded-xl bg-indigo-950/30 border border-indigo-800/40 text-xs text-indigo-300 flex items-start gap-2">
                 <Sparkles className="w-4 h-4 text-indigo-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <strong className="font-semibold text-white">Overfunding Stretch Goal: </strong>
+                  <strong className="font-semibold text-white">Stretch Goal Surplus: </strong>
                   This pool reached <strong>{percentNumber}%</strong> of its target. {isPaidOut ? (
                     <>
-                      All surplus (<strong>+{formatTokenAmount(contributedWei - targetWei)} {tokenSymbol}</strong>) was transferred in full directly to the recipient when payout was claimed on-chain. Under contract rules, 100% of all contributions are disbursed to the recipient and refunds are permanently closed.
+                      All surplus (<strong>+{formatTokenAmount(contributedWei - targetWei, tokenConfig.decimals)} {tokenConfig.symbol}</strong>) was transferred directly to the recipient on-chain. Under contract rules, 100% of all contributions are disbursed to the recipient and refunds are permanently closed.
                     </>
                   ) : (
                     <>
-                      All surplus (<strong>+{formatTokenAmount(contributedWei - targetWei)} {tokenSymbol}</strong>) will be transferred directly to the designated recipient upon payout. Under contract rules, 100% of all contributions are disbursed to the recipient.
+                      All surplus (<strong>+{formatTokenAmount(contributedWei - targetWei, tokenConfig.decimals)} {tokenConfig.symbol}</strong>) will be transferred directly to the recipient upon payout. Additional contributions after reaching the target are accepted and will also go to the recipient as stretch funding.
                     </>
                   )}
                 </div>
@@ -305,7 +370,112 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
             )}
           </div>
 
-          {/* Key Intelligence Metrics Grid */}
+          {/* FairShare Voluntary Breakdown Card */}
+          {fairShare.hasTargetParticipants && (
+            <div className="p-4 rounded-2xl bg-[#121624] border border-[#1e2333] space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-indigo-400" />
+                  <span>FairShare Guidance ({fairShare.expectedParticipants} Participants)</span>
+                </span>
+                <span className="text-[10px] text-gray-400">Voluntary Guidance</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="p-3 rounded-xl bg-[#0e121d] border border-[#1b2234]">
+                  <span className="text-gray-400 block">Suggested Share per Person</span>
+                  <span className="font-mono text-base font-bold text-white mt-0.5 block">
+                    ~{formatTokenAmount(fairShare.suggestedPerPersonWei, tokenConfig.decimals)} {tokenConfig.symbol}
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#0e121d] border border-[#1b2234]">
+                  <span className="text-gray-400 block">Your Contribution so Far</span>
+                  <span className="font-mono text-base font-bold text-indigo-300 mt-0.5 block">
+                    {formatTokenAmount(fairShare.userContributionWei, tokenConfig.decimals)} {tokenConfig.symbol}
+                    {fairShare.isUserShareFulfilled && (
+                      <span className="text-[10px] ml-1.5 px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-sans font-semibold">
+                        Suggested share reached!
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-gray-400 leading-relaxed">
+                {fairShare.guidanceNotice}
+              </p>
+
+              {isActive && !fairShare.isUserShareFulfilled && fairShare.remainingUserShareWei > 0n && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setContributionAmount(
+                      ethers.formatUnits(fairShare.remainingUserShareWei, tokenConfig.decimals)
+                    )
+                  }
+                  className="w-full py-2 px-3 rounded-xl text-xs font-semibold bg-[#1a2030] hover:bg-[#252c42] text-indigo-300 border border-indigo-800/40 transition flex items-center justify-center gap-1.5"
+                >
+                  <span>Fill My Remaining Suggested Share ({formatTokenAmount(fairShare.remainingUserShareWei, tokenConfig.decimals)} {tokenConfig.symbol})</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Funding Pace & Goal Rescue Card */}
+          {isActive && pace.remainingNeededWei > 0n && (
+            <div className="p-4 rounded-2xl bg-[#121624] border border-[#1e2333] space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-amber-400" />
+                  <span>Funding Pace & Goal Rescue</span>
+                </span>
+                <span className="text-[10px] text-gray-400 font-mono">
+                  {remainingNeededFormatted} {tokenConfig.symbol} needed
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="p-2.5 rounded-xl bg-[#0e121d] border border-[#1b2234]">
+                  <span className="text-gray-400 text-[11px] block">Required Daily Pace</span>
+                  <span className="font-mono text-sm font-bold text-white mt-0.5 block">
+                    ~{formatTokenAmount(pace.pacePerDayWei, tokenConfig.decimals)} {tokenConfig.symbol} / day
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-[#0e121d] border border-[#1b2234]">
+                  <span className="text-gray-400 text-[11px] block">Required Hourly Pace</span>
+                  <span className="font-mono text-sm font-bold text-indigo-300 mt-0.5 block">
+                    ~{formatTokenAmount(pace.pacePerHourWei, tokenConfig.decimals)} {tokenConfig.symbol} / hour
+                  </span>
+                </div>
+              </div>
+
+              {/* Goal Rescue Actions */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleRescueGoalClick}
+                  className="flex-1 py-2 px-3 rounded-xl text-xs font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition flex items-center justify-center gap-1.5"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Rescue Goal: Fill Gap ({remainingNeededFormatted} {tokenConfig.symbol})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyRescueLink}
+                  className="py-2 px-3 rounded-xl text-xs font-semibold bg-[#161b28] hover:bg-[#20273a] text-gray-300 hover:text-white border border-[#273046] transition flex items-center gap-1"
+                  title="Copy Goal Rescue link to share with potential sponsors"
+                >
+                  {copiedRescueLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
+                  <span>{copiedRescueLink ? 'Link Copied!' : 'Rescue Link'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Key Metrics Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333]">
               <span className="text-[11px] text-gray-400 uppercase font-medium block">Backers</span>
@@ -316,9 +486,9 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
             <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333]">
               <span className="text-[11px] text-gray-400 uppercase font-medium block">Avg. Backer</span>
               <span className="font-mono text-lg font-bold text-indigo-300 mt-0.5 block">
-                {formatTokenAmount(avgContributionWei)}
+                {formatTokenAmount(avgContributionWei, tokenConfig.decimals)}
               </span>
-              <span className="text-[10px] text-gray-500">{tokenSymbol} per backer</span>
+              <span className="text-[10px] text-gray-500">{tokenConfig.symbol} per backer</span>
             </div>
 
             <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333]">
@@ -342,10 +512,10 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                   localRefundSuccess ? 'text-emerald-400' : userContributed ? 'text-white' : 'text-gray-500'
                 }`}
               >
-                {localRefundSuccess ? '0' : formatTokenAmount(pool.userContribution)}
+                {localRefundSuccess ? '0' : formatTokenAmount(pool.userContribution, tokenConfig.decimals)}
               </span>
               <span className="text-[10px] text-gray-500">
-                {localRefundSuccess ? '100% Refunded' : `${tokenSymbol} deposited`}
+                {localRefundSuccess ? '100% Refunded' : `${tokenConfig.symbol} deposited`}
               </span>
             </div>
           </div>
@@ -395,10 +565,24 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-gray-400">Settlement Escrow:</span>
+              <span className="text-gray-400">Token Contract:</span>
+              <div className="flex items-center gap-1.5 font-mono">
+                <a
+                  href={getExplorerAddressUrl(tokenConfig.address)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-300 hover:underline"
+                >
+                  {shortenAddress(tokenConfig.address, 6)} ({tokenConfig.symbol})
+                </a>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-gray-400">Security Invariant:</span>
               <div className="flex items-center gap-1 text-emerald-400 font-mono">
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Verified CollectivePool Contract (Non-Custodial)</span>
+                <span>Verified Non-Custodial Smart Contract</span>
               </div>
             </div>
           </div>
@@ -417,7 +601,7 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
 
             {pool.contributors.length === 0 ? (
               <div className="py-4 text-center text-xs text-gray-500 bg-[#0c0f18] rounded-xl border border-dashed border-[#1a2030]">
-                No backers have deposited yet. Be the first to back this pool!
+                No backers have contributed yet. Be the first to back this pool!
               </div>
             ) : (
               <div className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
@@ -436,7 +620,6 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        {/* Deterministic Avatar */}
                         <div
                           className="w-6 h-6 rounded-full flex-shrink-0 border border-white/20"
                           style={{
@@ -455,7 +638,7 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                       <div className="flex items-center gap-1.5">
                         {isUser && pool.userContribution !== undefined && pool.userContribution > 0n && (
                           <span className="text-[11px] font-mono text-emerald-400 font-semibold mr-1">
-                            {formatTokenAmount(pool.userContribution)} {tokenSymbol}
+                            {formatTokenAmount(pool.userContribution, tokenConfig.decimals)} {tokenConfig.symbol}
                           </span>
                         )}
                         <button
@@ -514,20 +697,18 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                   <div>
                     <h4 className="text-sm font-bold text-white">Funds Paid Out to Recipient</h4>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      All {formatTokenAmount(contributedWei)} {tokenSymbol} have been disbursed on Monad Testnet.
+                      All {formatTokenAmount(contributedWei, tokenConfig.decimals)} {tokenConfig.symbol} have been disbursed on Monad Testnet.
                     </p>
                   </div>
                 </div>
-                {lastTxHash && (
-                  <a
-                    href={getExplorerTxUrl(lastTxHash)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-mono text-emerald-400 hover:underline inline-flex items-center gap-1"
+                {onOpenReceipt && (
+                  <button
+                    onClick={() => onOpenReceipt(pool)}
+                    className="text-xs font-semibold text-emerald-400 hover:underline inline-flex items-center gap-1"
                   >
-                    <span>Receipt</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
+                    <span>View Receipt</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
                 )}
               </div>
             )}
@@ -537,10 +718,10 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
               <div className="p-4 rounded-xl bg-indigo-950/40 border border-indigo-600/40 space-y-3">
                 <div className="flex items-center gap-2 text-indigo-300 text-xs font-semibold">
                   <Award className="w-4 h-4 text-indigo-400" />
-                  <span>Funding Target Met! Funds are ready for payout.</span>
+                  <span>Funding Goal Secured! Ready to release funds.</span>
                 </div>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Anyone can trigger the release of funds directly to the designated recipient on-chain.
+                  The goal has been achieved. Anyone or the recipient can trigger the release of funds directly to the recipient wallet on-chain. Additional contributions will also transfer to the recipient as stretch funding.
                 </p>
                 <button
                   onClick={handleClaimPayoutClick}
@@ -555,7 +736,7 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                   ) : (
                     <>
                       <Coins className="w-4 h-4" />
-                      <span>Release Payout ({formatTokenAmount(contributedWei)} {tokenSymbol})</span>
+                      <span>Release Funds ({formatTokenAmount(contributedWei, tokenConfig.decimals)} {tokenConfig.symbol})</span>
                     </>
                   )}
                 </button>
@@ -578,28 +759,17 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                         </p>
                       </div>
                     </div>
-                    {lastTxHash && (
-                      <a
-                        href={getExplorerTxUrl(lastTxHash)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-mono text-emerald-400 hover:underline inline-flex items-center gap-1"
-                      >
-                        <span>Receipt</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
                   </div>
                 ) : userContributed ? (
                   <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-600/40 space-y-3">
                     <div className="flex items-center gap-2 text-rose-300 text-xs font-semibold">
                       <AlertCircle className="w-4 h-4 text-rose-400" />
-                      <span>Guaranteed Refund Available</span>
+                      <span>100% Guaranteed Refund Available</span>
                     </div>
                     <p className="text-xs text-gray-400 leading-relaxed">
                       This pool expired without reaching its target. You can pull back 100% of your deposit (
-                      <strong className="text-white font-mono">{formatTokenAmount(pool.userContribution)} {tokenSymbol}</strong>
-                      ) directly into your connected wallet.
+                      <strong className="text-white font-mono">{formatTokenAmount(pool.userContribution, tokenConfig.decimals)} {tokenConfig.symbol}</strong>
+                      ) directly into your connected wallet with zero permission needed.
                     </p>
                     <button
                       onClick={handleClaimRefundClick}
@@ -612,7 +782,7 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                           <span>{actionStep || 'Claiming 100% Refund...'}</span>
                         </>
                       ) : (
-                        <span>Claim My 100% Refund ({formatTokenAmount(pool.userContribution)} {tokenSymbol})</span>
+                        <span>Claim My 100% Refund ({formatTokenAmount(pool.userContribution, tokenConfig.decimals)} {tokenConfig.symbol})</span>
                       )}
                     </button>
                   </div>
@@ -620,10 +790,10 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                   <div className="p-4 rounded-xl bg-cyan-950/30 border border-cyan-600/40 space-y-2">
                     <div className="flex items-center gap-2 text-cyan-300 text-xs font-semibold">
                       <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-                      <span>Refund Already Claimed & Settled</span>
+                      <span>Refund Already Withdrawn</span>
                     </div>
                     <p className="text-xs text-gray-300 leading-relaxed">
-                      Your connected wallet participated in this pool. Your 100% refund has already been withdrawn on-chain. There are 0 {tokenSymbol} remaining in escrow for this wallet.
+                      Your connected wallet participated in this pool. Your 100% refund has already been withdrawn on-chain.
                     </p>
                   </div>
                 ) : account ? (
@@ -633,12 +803,12 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                       <span>Not Eligible for Refund</span>
                     </div>
                     <p className="leading-relaxed">
-                      Connected wallet ({shortenAddress(account)}) did not contribute to this pool. Under smart contract rules, pull refunds are strictly reserved for original contributors.
+                      Connected wallet did not contribute to this pool. Pull refunds are strictly reserved for original contributors.
                     </p>
                   </div>
                 ) : (
                   <div className="p-4 rounded-xl bg-[#121624] border border-[#1e2333] text-center text-xs text-gray-400">
-                    This pool expired under target. Connect a participating wallet to check refund eligibility and withdraw deposits.
+                    This pool expired under target. Connect a participating wallet to check refund eligibility.
                   </div>
                 )}
               </div>
@@ -648,16 +818,12 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
             {isActive && (
               <form onSubmit={handleContributeSubmit} className="space-y-3">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-gray-300">Contribute to Goal</span>
+                  <span className="font-semibold text-gray-300">Chip in to this Goal</span>
                   <span className="text-gray-400">
-                    Your Balance:{' '}
-                    <button
-                      type="button"
-                      onClick={onOpenFaucet}
-                      className="font-mono font-bold text-indigo-400 hover:underline"
-                    >
-                      {formatTokenAmount(tokenBalance)} {tokenSymbol}
-                    </button>
+                    Your {tokenConfig.symbol} Balance:{' '}
+                    <span className="font-mono font-bold text-indigo-400">
+                      {formatTokenAmount(tokenBalance, tokenConfig.decimals)} {tokenConfig.symbol}
+                    </span>
                   </span>
                 </div>
 
@@ -669,15 +835,15 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                     onChange={(e) => setContributionAmount(e.target.value)}
                     placeholder="100"
                     disabled={Boolean(actionLoading)}
-                    className="w-full bg-[#121624] border border-[#1e2333] focus:border-indigo-500 rounded-xl px-4 py-3 text-white text-base font-mono focus:outline-none transition pr-20"
+                    className="w-full bg-[#121624] border border-[#1e2333] focus:border-indigo-500 rounded-xl px-4 py-3 text-white text-base font-mono focus:outline-none transition pr-24"
                   />
                   <span className="absolute right-4 top-3 text-sm font-semibold text-gray-400">
-                    {tokenSymbol}
+                    {tokenConfig.symbol}
                   </span>
                 </div>
 
                 {/* Preset Chips */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {['25', '50', '100', '250', '500'].map((preset) => (
                     <button
                       key={preset}
@@ -688,6 +854,15 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                       +{preset}
                     </button>
                   ))}
+                  {pace.remainingNeededWei > 0n && (
+                    <button
+                      type="button"
+                      onClick={handleRescueGoalClick}
+                      className="px-2.5 py-1 text-xs rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition font-mono font-bold"
+                    >
+                      Fill Remaining ({remainingNeededFormatted})
+                    </button>
+                  )}
                 </div>
 
                 {validationError && (
@@ -708,7 +883,7 @@ export const PoolDetailsModal: React.FC<PoolDetailsModalProps> = ({
                     <span>Connect Wallet to Back Pool</span>
                   ) : (
                     <>
-                      <span>Deposit {contributionAmount} {tokenSymbol}</span>
+                      <span>Deposit {contributionAmount} {tokenConfig.symbol}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}

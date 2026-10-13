@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import { X, PlusCircle, Clock, Target, User, Loader2, AlertCircle, Info, Sparkles } from 'lucide-react';
+import { X, PlusCircle, Clock, Target, User, Loader2, AlertCircle, Info, Sparkles, Users, Coins } from 'lucide-react';
 import { playClickSound } from '../utils/audioFeedback';
+import { SUPPORTED_TOKENS, TokenConfig } from '../contracts/config';
 
 interface CreatePoolModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (
+    tokenAddress: string,
     recipient: string,
     target: string,
     durationSeconds: number,
     title: string,
-    description: string
+    description: string,
+    expectedParticipants?: number | null
   ) => Promise<boolean>;
   isLoading: boolean;
   actionStep?: string | null;
@@ -26,8 +29,10 @@ export interface PoolTemplate {
   title: string;
   description: string;
   target: string;
+  tokenKey: 'MUSD' | 'USDC';
   durationSeconds: number;
   durationLabel: string;
+  participants?: number;
 }
 
 export const QUICK_TEMPLATES: PoolTemplate[] = [
@@ -38,8 +43,10 @@ export const QUICK_TEMPLATES: PoolTemplate[] = [
     title: 'Hackathon Team Dinner',
     description: 'Splitting dinner and refreshments for our Metropolis Hackathon build team.',
     target: '150',
+    tokenKey: 'USDC',
     durationSeconds: 86400, // 24 hours
     durationLabel: '24h',
+    participants: 5,
   },
   {
     id: 'trip',
@@ -48,8 +55,10 @@ export const QUICK_TEMPLATES: PoolTemplate[] = [
     title: 'Weekend Cabin Trip',
     description: 'Shared Airbnb accommodation, travel passes, and group grocery supplies.',
     target: '1200',
+    tokenKey: 'USDC',
     durationSeconds: 259200, // 3 days
     durationLabel: '3d',
+    participants: 6,
   },
   {
     id: 'gift',
@@ -58,8 +67,10 @@ export const QUICK_TEMPLATES: PoolTemplate[] = [
     title: 'Colleague Farewell Gift',
     description: 'Community pool for a farewell tech gift and customized memory card.',
     target: '80',
+    tokenKey: 'MUSD',
     durationSeconds: 43200, // 12 hours
     durationLabel: '12h',
+    participants: 4,
   },
   {
     id: 'fast-demo',
@@ -68,8 +79,10 @@ export const QUICK_TEMPLATES: PoolTemplate[] = [
     title: 'Fast Demo Test Pool',
     description: 'Rapid test pool for live judge demonstration with 10-minute expiry.',
     target: '50',
+    tokenKey: 'MUSD',
     durationSeconds: 600, // 10 minutes
     durationLabel: '10m',
+    participants: 2,
   },
 ];
 
@@ -90,15 +103,18 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
   isLoading,
   actionStep,
   account,
-  tokenSymbol,
 }) => {
+  const [selectedTokenKey, setSelectedTokenKey] = useState<'MUSD' | 'USDC'>('MUSD');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [target, setTarget] = useState('500');
   const [recipient, setRecipient] = useState(account || '');
   const [durationSeconds, setDurationSeconds] = useState(300); // 5 min default for demo
+  const [expectedParticipants, setExpectedParticipants] = useState<string>('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  const activeToken: TokenConfig = SUPPORTED_TOKENS[selectedTokenKey];
 
   const handleSelectTemplate = (tmpl: PoolTemplate) => {
     playClickSound();
@@ -106,13 +122,15 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
     setTitle(tmpl.title);
     setDescription(tmpl.description);
     setTarget(tmpl.target);
+    setSelectedTokenKey(tmpl.tokenKey);
     setDurationSeconds(tmpl.durationSeconds);
+    setExpectedParticipants(tmpl.participants ? String(tmpl.participants) : '');
     setValidationError(null);
 
     if (account) {
       setRecipient(account);
     } else {
-      setValidationError("Wallet not connected. Connect your wallet to autofill your address as recipient.");
+      setValidationError("Please connect your wallet to set your address as recipient.");
     }
   };
 
@@ -134,6 +152,13 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
 
   if (!isOpen) return null;
 
+  const targetNum = parseFloat(target) || 0;
+  const participantsNum = parseInt(expectedParticipants, 10);
+  const suggestedShare =
+    participantsNum > 1 && targetNum > 0
+      ? (targetNum / participantsNum).toFixed(activeToken.decimals === 6 ? 2 : 2)
+      : null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!account) {
@@ -148,22 +173,32 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
       return;
     }
 
-    const targetNum = parseFloat(target);
-    if (isNaN(targetNum) || targetNum <= 0) {
+    if (targetNum <= 0) {
       setValidationError("Funding target must be greater than zero.");
       return;
     }
 
     const cleanRecipient = recipient.trim();
     if (!cleanRecipient || !ethers.isAddress(cleanRecipient)) {
-      setValidationError("Please enter a valid EVM recipient address (0x...).");
+      setValidationError("Please enter a valid wallet address (0x...) for the recipient.");
       return;
     }
 
-    const ok = await onCreate(cleanRecipient, target, durationSeconds, cleanTitle, description.trim());
+    const parsedParticipants = participantsNum > 1 ? participantsNum : null;
+
+    const ok = await onCreate(
+      activeToken.address,
+      cleanRecipient,
+      target,
+      durationSeconds,
+      cleanTitle,
+      description.trim(),
+      parsedParticipants
+    );
     if (ok) {
       setTitle('');
       setDescription('');
+      setExpectedParticipants('');
       setSelectedTemplateId(null);
       onClose();
     }
@@ -192,7 +227,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
           </div>
           <div>
             <h3 id="create-pool-title" className="text-xl font-bold text-white tracking-tight">Create Funding Pool</h3>
-            <p className="text-xs text-indigo-300/80">Enforced on-chain by Monad Smart Contract</p>
+            <p className="text-xs text-indigo-300/80">Automated group money box with guaranteed refunds</p>
           </div>
         </div>
 
@@ -209,9 +244,9 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Quick Start Templates</span>
+                <span>Quick Start Presets</span>
               </span>
-              <span className="text-[10px] text-gray-400 font-mono">1-Click Autofill</span>
+              <span className="text-[10px] text-gray-400 font-mono">1-Click Fill</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {QUICK_TEMPLATES.map((tmpl) => (
@@ -230,11 +265,64 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                   <div className="min-w-0">
                     <div className="text-xs font-semibold truncate">{tmpl.name}</div>
                     <div className="text-[10px] text-gray-400 font-mono">
-                      {tmpl.target} {tokenSymbol} · {tmpl.durationLabel}
+                      {tmpl.target} {SUPPORTED_TOKENS[tmpl.tokenKey].symbol} · {tmpl.durationLabel}
                     </div>
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Token Currency Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+              <span className="flex items-center space-x-1.5">
+                <Coins className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Choose Currency *</span>
+              </span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setSelectedTokenKey('MUSD');
+                }}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  selectedTokenKey === 'MUSD'
+                    ? 'bg-indigo-950/70 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                    : 'bg-gray-900/60 border-gray-800 text-gray-400 hover:border-gray-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white">mUSD</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">18 Dec</span>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1 leading-snug">
+                  Free test dollars (instant in-app mint)
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setSelectedTokenKey('USDC');
+                }}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  selectedTokenKey === 'USDC'
+                    ? 'bg-indigo-950/70 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                    : 'bg-gray-900/60 border-gray-800 text-gray-400 hover:border-gray-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white">USDC</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Circle 6 Dec</span>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1 leading-snug">
+                  Official Circle USD Coin on Monad
+                </p>
+              </button>
             </div>
           </div>
 
@@ -247,7 +335,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Hackathon Team Travel & Lodging"
+              placeholder="e.g. Hackathon Team Dinner & Refreshments"
               className="w-full px-4 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white outline-none text-sm transition-all"
               required
               disabled={isLoading}
@@ -262,7 +350,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Explain the purpose of this pool to your contributors..."
+              placeholder="Explain the purpose of this group fund to your friends..."
               rows={2}
               className="w-full px-4 py-2 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white outline-none text-sm transition-all resize-none"
               disabled={isLoading}
@@ -274,13 +362,13 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
               <span className="flex items-center space-x-1.5">
                 <Target className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Target Funding Goal ({tokenSymbol}) *</span>
+                <span>Target Funding Goal ({activeToken.symbol}) *</span>
               </span>
             </label>
             <div className="relative">
               <input
                 type="number"
-                min="1"
+                min="0.01"
                 step="any"
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
@@ -290,9 +378,40 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                 disabled={isLoading}
               />
               <span className="absolute right-3.5 top-2.5 text-xs font-semibold text-gray-400">
-                {tokenSymbol}
+                {activeToken.symbol}
               </span>
             </div>
+          </div>
+
+          {/* FairShare: Expected Group Size / Participants */}
+          <div className="p-3.5 rounded-2xl bg-[#131722]/80 border border-[#212638] space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-indigo-400" />
+                <span>FairShare: Group Size (Optional)</span>
+              </label>
+              <span className="text-[10px] text-gray-400">Voluntary Guidance</span>
+            </div>
+            <input
+              type="number"
+              min="2"
+              max="500"
+              step="1"
+              value={expectedParticipants}
+              onChange={(e) => setExpectedParticipants(e.target.value)}
+              placeholder="e.g. 5 friends splitting"
+              className="w-full px-4 py-2 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 text-white outline-none text-xs transition-all"
+              disabled={isLoading}
+            />
+            {suggestedShare && (
+              <div className="text-[11px] text-emerald-300 bg-emerald-950/40 border border-emerald-800/40 p-2.5 rounded-xl flex items-center justify-between">
+                <span>Suggested share per person:</span>
+                <span className="font-mono font-bold text-white">~{suggestedShare} {activeToken.symbol}</span>
+              </div>
+            )}
+            <p className="text-[10px] text-gray-400">
+              Suggested shares are non-binding guidance to help friends see their equal share. Anyone can contribute any amount.
+            </p>
           </div>
 
           {/* Recipient Address */}
@@ -300,7 +419,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
               <span className="flex items-center space-x-1.5">
                 <User className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Fixed Recipient Address *</span>
+                <span>Recipient Wallet Address *</span>
               </span>
             </label>
             <input
@@ -328,7 +447,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
               <span className="flex items-center space-x-1.5">
                 <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Funding Deadline Duration *</span>
+                <span>Funding Countdown Duration *</span>
               </span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -350,7 +469,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             </div>
             <p className="mt-2 text-[11px] text-gray-400 flex items-center space-x-1">
               <Info className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-              <span>If target is not met by the deadline, 100% refunds become available.</span>
+              <span>If the goal is not reached before time runs out, 100% refunds unlock immediately.</span>
             </p>
           </div>
 
@@ -373,10 +492,10 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             ) : isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Deploying Pool on Monad...</span>
+                <span>Creating Pool on Monad...</span>
               </>
             ) : (
-              <span>Launch Pool on Monad</span>
+              <span>Create Pool on Monad</span>
             )}
           </button>
         </form>

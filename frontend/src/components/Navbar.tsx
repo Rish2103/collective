@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { ethers } from 'ethers';
 import { Wallet, Droplets, AlertTriangle, Menu, X, PlusCircle, ShieldCheck, Volume2, VolumeX } from 'lucide-react';
-import { MONAD_TESTNET } from '../contracts/config';
+import { MONAD_TESTNET, CONTRACT_ADDRESSES } from '../contracts/config';
 import { formatTokenAmount, shortenAddress } from '../utils/formatters';
 import { useBlockTicker } from '../hooks/useBlockTicker';
 import { isAudioEnabled, setAudioEnabled, playToggleSound } from '../utils/audioFeedback';
@@ -13,6 +12,7 @@ interface NavbarProps {
   isCorrectNetwork: boolean;
   tokenBalance: bigint;
   tokenSymbol: string;
+  balances?: Record<string, bigint>;
   isConnecting: boolean;
   onConnect: () => void;
   onSwitchNetwork: () => void;
@@ -27,6 +27,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isCorrectNetwork,
   tokenBalance,
   tokenSymbol,
+  balances,
   isConnecting,
   onConnect,
   onSwitchNetwork,
@@ -45,7 +46,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     playToggleSound(next);
   };
 
-  const displayBalance = formatTokenAmount(tokenBalance);
+  const musdBalance = balances?.[CONTRACT_ADDRESSES.mockToken.toLowerCase()] ?? tokenBalance;
+  const usdcBalance = balances?.[CONTRACT_ADDRESSES.usdc.toLowerCase()] ?? 0n;
+
   const shortAddress = shortenAddress(account);
 
   return (
@@ -63,13 +66,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 2.0
               </span>
             </div>
-            <p className="text-[11px] text-gray-400 font-medium hidden sm:block">Consumer Group Payments & Pull Refunds</p>
+            <p className="text-[11px] text-gray-400 font-medium hidden sm:block">Consumer Group Payments & Guaranteed Refunds</p>
           </div>
         </div>
 
         {/* Desktop Controls */}
         <div className="hidden md:flex items-center space-x-3">
-          {/* Trust & Transparency Button */}
+          {/* Safety & Protocol Rules Button */}
           <button
             onClick={onOpenTrustModal}
             className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-[#121622] hover:bg-[#181d2e] text-gray-300 hover:text-white border border-[#20273a] transition shadow-sm"
@@ -100,7 +103,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               target="_blank"
               rel="noopener noreferrer"
               className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl text-xs bg-[#121622] hover:bg-[#181d2e] border border-[#20273a] text-gray-400 hover:text-indigo-300 transition font-mono"
-              title="Current Monad Testnet block height (view on Monad Explorer)"
+              title="Current Monad Testnet block height"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span>#{blockNumber.toLocaleString()}</span>
@@ -127,16 +130,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           )}
 
-          {/* Faucet button */}
+          {/* Token Balances & Faucet button */}
           {isConnected && (
             <button
               onClick={onOpenFaucet}
-              className="flex items-center space-x-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/40 transition-colors shadow-sm"
-              title="Mint test MockUSD tokens"
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 border border-indigo-700/40 transition-colors shadow-sm"
+              title="Claim test tokens (mUSD or Circle USDC)"
             >
-              <Droplets className="w-4 h-4 text-indigo-400" />
-              <span className="text-gray-400">Balance:</span>
-              <span className="font-mono font-bold text-white">{displayBalance} {tokenSymbol}</span>
+              <Droplets className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="font-mono font-bold text-white">
+                {formatTokenAmount(musdBalance, 18)} mUSD
+              </span>
+              <span className="text-gray-500">·</span>
+              <span className="font-mono font-bold text-emerald-300">
+                {formatTokenAmount(usdcBalance, 6)} USDC
+              </span>
             </button>
           )}
 
@@ -179,31 +187,24 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Mobile Menu Dropdown */}
+      {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-[#1e2333] bg-[#090b10] px-4 pt-3 pb-5 space-y-3">
-          {isConnected && (
-            <div className="p-3 rounded-xl bg-[#121622] border border-[#20273a] flex items-center justify-between text-xs">
-              <span className="text-gray-400">Balance:</span>
-              <span className="font-mono font-bold text-white">{displayBalance} {tokenSymbol}</span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between p-3 rounded-xl bg-[#121622] border border-[#20273a] text-xs">
-            <span className="text-gray-400">Audio Feedback:</span>
-            <button
-              onClick={toggleSound}
-              className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#1a2030] text-gray-300 flex items-center gap-1.5"
-            >
-              {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-indigo-400" /> : <VolumeX className="w-3.5 h-3.5 text-gray-500" />}
-              <span>{soundEnabled ? 'Enabled' : 'Muted'}</span>
-            </button>
+        <div className="md:hidden border-t border-[#1e2333] bg-[#0c0f17] p-4 space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-[#1a2030]">
+            <span className="text-xs text-gray-400">Network:</span>
+            <span className="text-xs font-semibold text-emerald-400">{MONAD_TESTNET.name}</span>
           </div>
 
-          {blockNumber && (
-            <div className="p-3 rounded-xl bg-[#121622] border border-[#20273a] flex items-center justify-between text-xs font-mono">
-              <span className="text-gray-400">Monad Block:</span>
-              <span className="text-indigo-400">#{blockNumber.toLocaleString()}</span>
+          {isConnected && (
+            <div className="p-3 rounded-xl bg-[#121622] border border-[#20273a] space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Test mUSD:</span>
+                <span className="font-mono font-bold text-white">{formatTokenAmount(musdBalance, 18)} mUSD</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Circle USDC:</span>
+                <span className="font-mono font-bold text-emerald-400">{formatTokenAmount(usdcBalance, 6)} USDC</span>
+              </div>
             </div>
           )}
 
@@ -216,7 +217,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold bg-[#121622] border border-[#20273a] text-gray-300 text-center flex items-center justify-center gap-2"
             >
               <ShieldCheck className="w-4 h-4 text-indigo-400" />
-              <span>Trust & Rules</span>
+              <span>Safety & Rules</span>
             </button>
 
             <button
@@ -237,7 +238,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }}
                 className="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-indigo-950/80 border border-indigo-700/50 text-indigo-300 text-center"
               >
-                Open Faucet ({tokenSymbol})
+                Claim Test Tokens
               </button>
             )}
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ShieldCheck, ExternalLink, Copy, Check, Lock, Award, AlertCircle, Cpu } from 'lucide-react';
+import { X, ShieldCheck, ExternalLink, Copy, Check, Lock, Award, AlertCircle, Cpu, Coins } from 'lucide-react';
 import { MONAD_TESTNET, CONTRACT_ADDRESSES, getExplorerAddressUrl } from '../contracts/config';
 import { shortenAddress } from '../utils/formatters';
 
@@ -32,7 +32,7 @@ export const TrustModal: React.FC<TrustModalProps> = ({ isOpen, onClose }) => {
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-white tracking-tight">Trust & Transparency Architecture</h3>
+              <h3 className="text-lg font-bold text-white tracking-tight">Safety & Transparency Rules</h3>
               <p className="text-xs text-gray-400">Verified contracts, deterministic rules & Monad Testnet details</p>
             </div>
           </div>
@@ -66,7 +66,7 @@ export const TrustModal: React.FC<TrustModalProps> = ({ isOpen, onClose }) => {
                 <span className="font-semibold text-white font-mono">{MONAD_TESTNET.chainId}</span>
               </div>
               <div>
-                <span className="text-gray-500 block">Gas Currency</span>
+                <span className="text-gray-500 block">Network Fee Token</span>
                 <span className="font-semibold text-white font-mono">{MONAD_TESTNET.nativeCurrency.symbol} (Testnet)</span>
               </div>
               <div>
@@ -78,7 +78,7 @@ export const TrustModal: React.FC<TrustModalProps> = ({ isOpen, onClose }) => {
 
           {/* Deployed Contracts */}
           <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Deployed Verified Contracts</h4>
+            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Verified Deployed Contracts</h4>
 
             {/* CollectivePool */}
             <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333] flex items-center justify-between gap-3">
@@ -113,13 +113,46 @@ export const TrustModal: React.FC<TrustModalProps> = ({ isOpen, onClose }) => {
               </div>
             </div>
 
+            {/* Native Circle USDC */}
+            <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333] flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-white">Native Circle USD Coin (USDC)</span>
+                  <span className="text-[10px] px-2 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Circle 6 Decimals
+                  </span>
+                </div>
+                <div className="text-xs text-gray-400 font-mono mt-0.5 truncate">
+                  {shortenAddress(CONTRACT_ADDRESSES.usdc, 8)}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => copyAddress(CONTRACT_ADDRESSES.usdc, 'usdc')}
+                  className="p-1.5 rounded-lg bg-[#1a2030] hover:bg-[#232b42] text-gray-400 hover:text-white border border-[#273046] transition"
+                  title="Copy USDC address"
+                >
+                  {copiedKey === 'usdc' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+                <a
+                  href={getExplorerAddressUrl(CONTRACT_ADDRESSES.usdc)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 rounded-lg bg-[#1a2030] hover:bg-[#232b42] text-gray-400 hover:text-indigo-400 border border-[#273046] transition"
+                  title="View in Monad Explorer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+
             {/* MockToken */}
             <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333] flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white">MockUSD (mUSD) Token</span>
-                  <span className="text-[10px] px-2 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    ERC-20 Faucet
+                  <span className="text-[10px] px-2 py-0.2 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    Test Token (18 Dec)
                   </span>
                 </div>
                 <div className="text-xs text-gray-400 font-mono mt-0.5 truncate">
@@ -149,59 +182,39 @@ export const TrustModal: React.FC<TrustModalProps> = ({ isOpen, onClose }) => {
 
           {/* Guarantees & Contract Invariants */}
           <div className="space-y-3">
-            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Protocol Invariants</h4>
+            <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Protocol Safety Rules</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333]">
                 <div className="flex items-center gap-2 text-indigo-400 font-semibold mb-1">
                   <Lock className="w-4 h-4" />
-                  <span>Guaranteed Pull Refunds</span>
+                  <span>Guaranteed 100% Refunds</span>
                 </div>
                 <p className="text-gray-400">
-                  If the target is not reached before expiry, 100% of each deposit remains claimable directly by the contributor. Funds can never be held hostage.
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333]">
-                <div className="flex items-center gap-2 text-amber-400 font-semibold mb-1">
-                  <Award className="w-4 h-4" />
-                  <span>Overfunding Policy</span>
-                </div>
-                <p className="text-gray-400">
-                  Contributions exceeding the target are disbursed in full to the recipient upon payout, enabling stretch goals without refund lockup.
+                  If the target is not reached before expiry, 100% of each deposit remains claimable directly by the contributor. Funds cannot be stolen or held hostage.
                 </p>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333]">
                 <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1">
-                  <Cpu className="w-4 h-4" />
-                  <span>Non-Custodial Escrow</span>
+                  <Award className="w-4 h-4" />
+                  <span>Transparent Payouts</span>
                 </div>
                 <p className="text-gray-400">
-                  Funds reside purely in the immutable smart contract bytecode. Neither developers nor operators hold private keys or administrative backdoors.
-                </p>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-[#121624] border border-[#1e2333]">
-                <div className="flex items-center gap-2 text-rose-400 font-semibold mb-1">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>Zero Fiat Value</span>
-                </div>
-                <p className="text-gray-400">
-                  mUSD and MON are testnet tokens intended exclusively for developer testing and demonstration on Monad Testnet.
+                  When the target is met, funds unlock for the recipient. Additional contributions above the goal are sent to the recipient upon payout as stretch funding.
                 </p>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-[#1e2333] bg-[#0f1320] flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition shadow-lg shadow-indigo-600/20"
-          >
-            Understood
-          </button>
+          {/* Modal Footer */}
+          <div className="mt-6 pt-4 border-t border-[#1a2030] flex justify-end">
+            <button
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-md"
+            >
+              Understood
+            </button>
+          </div>
         </div>
       </div>
     </div>

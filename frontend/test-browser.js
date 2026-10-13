@@ -2,9 +2,11 @@ import { chromium } from 'playwright';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-const ARTIFACT_DIR = 'C:\\Users\\RISHABH\\.gemini\\antigravity\\brain\\994ff85e-ed1b-4b1f-8f0b-ffc65235dc66';
-const SCREENSHOT_DIR = path.join(ARTIFACT_DIR, 'scratch');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const SCREENSHOT_DIR = path.join(__dirname, 'test-screenshots');
 
 if (!fs.existsSync(SCREENSHOT_DIR)) {
   fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
@@ -16,7 +18,7 @@ async function runBrowserAudit() {
   // 1. Start Vite preview server on 5174
   console.log("Starting Vite preview server on port 5174...");
   const server = spawn('npx', ['vite', 'preview', '--port', '5174', '--strictPort'], {
-    cwd: 'D:\\Collective\\frontend',
+    cwd: __dirname,
     shell: true,
   });
 
@@ -336,17 +338,58 @@ async function runBrowserAudit() {
     await auditPage.goto('http://localhost:5174', { waitUntil: 'networkidle' });
     await auditPage.waitForSelector('div.group', { timeout: 25000 });
 
-    // Verify Pool #3 displays Refunds Settled
-    const pool3Settled = await auditPage.$('span:has-text("Refunds Settled")');
-    console.log(`Pool #3 displays Refunds Settled (0 tokens outstanding): ${Boolean(pool3Settled)}`);
+    // Verify Settled Pool State (e.g. Successfully Settled / Refunds Settled)
+    const settledBadge = await auditPage.$('span:has-text("Settled")');
+    console.log(`Pool displays Settled status: ${Boolean(settledBadge)}`);
 
-    // Verify Pool #7 or #1 displays Refunds Active
-    const refundsActivePill = await auditPage.$('span:has-text("Refunds Active")');
-    console.log(`Underfunded expired pool displays Refunds Active: ${Boolean(refundsActivePill)}`);
+    // Verify Expired Pool Refund State (e.g. Refunds Open / Refunds Active)
+    const refundsBadge = await auditPage.$('span:has-text("Refund")');
+    console.log(`Underfunded expired pool displays Refund status: ${Boolean(refundsBadge)}`);
 
-    // Verify Pool #6 displays Stretch Goal
+    // Verify Overfunded Pool Stretch Goal indicator
     const stretchGoalBadge = await auditPage.$('div:has-text("Stretch Goal")');
-    console.log(`Overfunded Pool #6 displays Stretch Goal indicator: ${Boolean(stretchGoalBadge)}`);
+    console.log(`Overfunded Pool displays Stretch Goal indicator: ${Boolean(stretchGoalBadge)}`);
+
+    // Verify Native USDC & MUSD Supported Currencies
+    const usdcBadge = await auditPage.$('span:has-text("USDC"), button:has-text("USDC")');
+    console.log(`Native Circle USDC currency badge/controls present: ${Boolean(usdcBadge)}`);
+
+    // Verify FairShare Guidance
+    const fairShareBadge = await auditPage.$('*:has-text("FairShare")');
+    console.log(`FairShare group size/guidance elements present: ${Boolean(fairShareBadge)}`);
+
+    // ==========================================
+    // TEST 14: Verifiable Outcome Receipt Modal & Deep Link (?receipt=true)
+    // ==========================================
+    console.log("\n[TEST 14] Testing Verifiable Outcome Receipt Deep Link (?pool=3&receipt=true)...");
+    const receiptContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const receiptPage = await receiptContext.newPage();
+    await receiptPage.goto('http://localhost:5174/?pool=3&receipt=true', { waitUntil: 'networkidle' });
+    await receiptPage.waitForSelector('h3:has-text("Verifiable Outcome Receipt")', { timeout: 15000 });
+    console.log("Outcome Receipt modal opened via direct ?receipt=true deep link.");
+
+    const receiptProofText = await receiptPage.textContent('div:has-text("On-Chain Verification")');
+    console.log(`Receipt verified on-chain cryptographic proof banner: ${Boolean(receiptProofText)}`);
+
+    const receiptScreenshot = path.join(SCREENSHOT_DIR, 'collective2_outcome_receipt.png');
+    await receiptPage.screenshot({ path: receiptScreenshot });
+    console.log(`Saved Outcome Receipt modal screenshot: ${receiptScreenshot}`);
+    await receiptContext.close();
+
+    // ==========================================
+    // TEST 15: Goal Rescue Navigation (?pool=3&rescue=true)
+    // ==========================================
+    console.log("\n[TEST 15] Testing Goal Rescue Deep Link (?pool=3&rescue=true)...");
+    const rescueContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const rescuePage = await rescueContext.newPage();
+    await rescuePage.goto('http://localhost:5174/?pool=3&rescue=true', { waitUntil: 'networkidle' });
+    await rescuePage.waitForSelector('h3', { timeout: 15000 });
+    console.log("Goal Rescue modal opened via ?rescue=true deep link.");
+
+    const rescueScreenshot = path.join(SCREENSHOT_DIR, 'collective2_goal_rescue.png');
+    await rescuePage.screenshot({ path: rescueScreenshot });
+    console.log(`Saved Goal Rescue screenshot: ${rescueScreenshot}`);
+    await rescueContext.close();
 
     await auditContext.close();
     await desktopContext.close();

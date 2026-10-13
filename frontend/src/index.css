@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    background: radial-gradient(circle at 50% 0%, #1e1035 0%, #0b0c10 70%);
+    background: radial-gradient(circle at 50% 0%, #17112b 0%, #08090e 60%, #050608 100%);
     background-attachment: fixed;
     color: #f3f4f6;
   }
@@ -19,12 +19,60 @@
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #111217;
+  background: #0d0f17;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2b2d38;
+  background: #232736;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3e4152;
+  background: #363c52;
+}
+
+/* Remove default browser number input spin arrows */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Stripe-inspired ambient mesh animation */
+@keyframes ambient-drift {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(25px, -15px) scale(1.04);
+  }
+}
+
+.animate-ambient-drift {
+  animation: ambient-drift 18s ease-in-out infinite alternate;
+}
+
+/* Stripe-style gradient border hover utility */
+.stripe-border-glow {
+  position: relative;
+}
+.stripe-border-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(168, 85, 247, 0.2), rgba(6, 182, 212, 0.3));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.stripe-border-glow:hover::before {
+  opacity: 1;
 }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PlusCircle, Users, Scale, ArrowRight, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { SpotlightCard } from './SpotlightCard';
 
 interface HowItWorksProps {
   tokenSymbol?: string;
@@ -39,7 +40,12 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
           <div className="mt-4 pt-4 border-t border-[#171b28]">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
               {/* Step 1 */}
-              <div className="relative p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between">
+              <SpotlightCard
+                spotlightColor="rgba(99, 102, 241, 0.15)"
+                borderColor="rgba(129, 140, 248, 0.35)"
+                maxTilt={2}
+                className="p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between"
+              >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-mono font-bold text-indigo-400 bg-indigo-950/80 px-2 py-0.5 rounded">
@@ -51,16 +57,21 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
                   </div>
                   <h4 className="text-sm font-bold text-white">Create a Funding Pool</h4>
                   <p className="text-xs text-gray-400 leading-relaxed">
-                    Set a purpose, funding target ({tokenSymbol}), expiration deadline, and designated recipient. Non-custodial escrow is deployed directly to the smart contract.
+                    Set a purpose, funding goal ({tokenSymbol} or Circle USDC), a countdown timer, and who receives the money. Funds are kept in an automated, tamper-proof digital lockbox.
                   </p>
                 </div>
                 <div className="hidden md:flex justify-end pt-2 text-gray-600">
                   <ArrowRight className="w-4 h-4" />
                 </div>
-              </div>
+              </SpotlightCard>
 
               {/* Step 2 */}
-              <div className="relative p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between">
+              <SpotlightCard
+                spotlightColor="rgba(168, 85, 247, 0.15)"
+                borderColor="rgba(192, 132, 252, 0.35)"
+                maxTilt={2}
+                className="p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between"
+              >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-mono font-bold text-purple-400 bg-purple-950/80 px-2 py-0.5 rounded">
@@ -72,16 +83,21 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
                   </div>
                   <h4 className="text-sm font-bold text-white">Back It Together</h4>
                   <p className="text-xs text-gray-400 leading-relaxed">
-                    Friends and participants deposit test {tokenSymbol} via wallet transactions on Monad Testnet. Every contribution is tracked individually on-chain.
+                    Share your pool link. Friends connect their wallet and chip in whatever amount they want. Optional FairShare guidance helps split the bill equally.
                   </p>
                 </div>
                 <div className="hidden md:flex justify-end pt-2 text-gray-600">
                   <ArrowRight className="w-4 h-4" />
                 </div>
-              </div>
+              </SpotlightCard>
 
               {/* Step 3 */}
-              <div className="relative p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between">
+              <SpotlightCard
+                spotlightColor="rgba(16, 185, 129, 0.15)"
+                borderColor="rgba(52, 211, 153, 0.35)"
+                maxTilt={2}
+                className="p-4 rounded-xl bg-[#101420]/70 border border-[#1d2334] flex flex-col justify-between"
+              >
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded">
@@ -94,14 +110,14 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
                   <h4 className="text-sm font-bold text-white">Resolve Transparently</h4>
                   <div className="text-xs text-gray-400 space-y-1.5 leading-relaxed">
                     <p>
-                      <strong className="text-emerald-300">Target Reached:</strong> Recipient claims 100% of pooled funds.
+                      <strong className="text-emerald-300">Goal Reached:</strong> Recipient collects 100% of the funds to pay for the event.
                     </p>
                     <p>
-                      <strong className="text-rose-300">Underfunded at Expiry:</strong> Each contributor pulls back 100% of their deposit trustlessly.
+                      <strong className="text-rose-300">Goal Not Reached:</strong> Time runs out? Every backer pulls back 100% of their money immediately with one click.
                     </p>
                   </div>
                 </div>
-              </div>
+              </SpotlightCard>
             </div>
 
             {/* Testnet & Conditions Footnote */}
@@ -109,7 +125,7 @@ export const HowItWorks: React.FC<HowItWorksProps> = ({ tokenSymbol = 'mUSD' }) 
               <div className="flex items-center space-x-1.5">
                 <Info className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
                 <span>
-                  Refunds use the secure pull pattern (claimable individually by contributing wallets). {tokenSymbol} is a test token on Monad Testnet (Chain ID 10143) with zero fiat value.
+                  Refunds use the secure pull pattern: contributors claim their own refunds directly to prevent stuck funds. Supports test tokens (mUSD) and official Circle USDC on Monad Testnet (Chain ID 10143).
                 </span>
               </div>
             </div>

@@ -1,22 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
-import { X, PlusCircle, Clock, Target, User, Loader2, AlertCircle, Info, Sparkles } from 'lucide-react';
+import { X, PlusCircle, Clock, Target, User, Loader2, AlertCircle, Info, Sparkles, Users, Coins, Calculator, Check, ChevronUp, ChevronDown } from 'lucide-react';
 import { playClickSound } from '../utils/audioFeedback';
+import { SUPPORTED_TOKENS, TokenConfig } from '../contracts/config';
 
 interface CreatePoolModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (
+    tokenAddress: string,
     recipient: string,
     target: string,
     durationSeconds: number,
     title: string,
-    description: string
+    description: string,
+    expectedParticipants?: number | null
   ) => Promise<boolean>;
   isLoading: boolean;
   actionStep?: string | null;
   account: string | null;
   tokenSymbol: string;
+  initialValues?: {
+    title?: string;
+    target?: string;
+    tokenKey?: 'MUSD' | 'USDC';
+    participants?: number;
+    description?: string;
+  } | null;
 }
 
 export interface PoolTemplate {
@@ -26,8 +36,10 @@ export interface PoolTemplate {
   title: string;
   description: string;
   target: string;
+  tokenKey: 'MUSD' | 'USDC';
   durationSeconds: number;
   durationLabel: string;
+  participants?: number;
 }
 
 export const QUICK_TEMPLATES: PoolTemplate[] = [
@@ -38,8 +50,10 @@ export const QUICK_TEMPLATES: PoolTemplate[] = [
     title: 'Hackathon Team Dinner',
     description: 'Splitting dinner and refreshments for our Metropolis Hackathon build team.',
     target: '150',
+    tokenKey: 'USDC',
     durationSeconds: 86400, // 24 hours
     durationLabel: '24h',
+    participants: 5,
   },
   {
     id: 'trip',
@@ -48,8 +62,10 @@ export const QUICK_TEMPLATES: PoolTemplate[] = [
     title: 'Weekend Cabin Trip',
     description: 'Shared Airbnb accommodation, travel passes, and group grocery supplies.',
     target: '1200',
+    tokenKey: 'USDC',
     durationSeconds: 259200, // 3 days
     durationLabel: '3d',
+    participants: 6,
   },
   {
     id: 'gift',
@@ -58,8 +74,10 @@ export const QUICK_TEMPLATES: PoolTemplate[] = [
     title: 'Colleague Farewell Gift',
     description: 'Community pool for a farewell tech gift and customized memory card.',
     target: '80',
+    tokenKey: 'MUSD',
     durationSeconds: 43200, // 12 hours
     durationLabel: '12h',
+    participants: 4,
   },
   {
     id: 'fast-demo',
@@ -68,8 +86,10 @@ export const QUICK_TEMPLATES: PoolTemplate[] = [
     title: 'Fast Demo Test Pool',
     description: 'Rapid test pool for live judge demonstration with 10-minute expiry.',
     target: '50',
+    tokenKey: 'MUSD',
     durationSeconds: 600, // 10 minutes
     durationLabel: '10m',
+    participants: 2,
   },
 ];
 
@@ -90,15 +110,45 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
   isLoading,
   actionStep,
   account,
-  tokenSymbol,
+  initialValues,
 }) => {
+  const [selectedTokenKey, setSelectedTokenKey] = useState<'MUSD' | 'USDC'>('MUSD');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [target, setTarget] = useState('500');
   const [recipient, setRecipient] = useState(account || '');
   const [durationSeconds, setDurationSeconds] = useState(300); // 5 min default for demo
+  const [expectedParticipants, setExpectedParticipants] = useState<string>('');
   const [validationError, setValidationError] = useState<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  // Bill-Splitter & Tip Calculator State
+  const [showBillSplitter, setShowBillSplitter] = useState(false);
+  const [billBaseAmount, setBillBaseAmount] = useState('120');
+  const [tipPercent, setTipPercent] = useState<number>(15);
+  const [splitCount, setSplitCount] = useState('4');
+  const [splitterApplied, setSplitterApplied] = useState(false);
+
+  const baseNum = parseFloat(billBaseAmount) || 0;
+  const tipAmount = (baseNum * tipPercent) / 100;
+  const totalWithTip = baseNum + tipAmount;
+  const splitNum = parseInt(splitCount, 10) || 1;
+  const perPersonSplit = splitNum > 0 ? (totalWithTip / splitNum).toFixed(2) : '0';
+
+  const handleApplySplitter = () => {
+    if (baseNum <= 0) return;
+    setTarget(totalWithTip.toFixed(2));
+    setExpectedParticipants(String(splitNum));
+    const summary = `🧾 Bill Split: $${baseNum.toFixed(2)}${tipPercent > 0 ? ` + ${tipPercent}% Tip ($${tipAmount.toFixed(2)})` : ''} split across ${splitNum} people (~$${perPersonSplit} each).`;
+    if (!description.includes('Bill Split:')) {
+      setDescription((prev) => (prev ? `${summary}\n\n${prev}` : summary));
+    }
+    setSplitterApplied(true);
+    playClickSound();
+    setTimeout(() => setSplitterApplied(false), 2000);
+  };
+
+  const activeToken: TokenConfig = SUPPORTED_TOKENS[selectedTokenKey];
 
   const handleSelectTemplate = (tmpl: PoolTemplate) => {
     playClickSound();
@@ -106,13 +156,15 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
     setTitle(tmpl.title);
     setDescription(tmpl.description);
     setTarget(tmpl.target);
+    setSelectedTokenKey(tmpl.tokenKey);
     setDurationSeconds(tmpl.durationSeconds);
+    setExpectedParticipants(tmpl.participants ? String(tmpl.participants) : '');
     setValidationError(null);
 
     if (account) {
       setRecipient(account);
     } else {
-      setValidationError("Wallet not connected. Connect your wallet to autofill your address as recipient.");
+      setValidationError("Please connect your wallet to set your address as recipient.");
     }
   };
 
@@ -122,6 +174,17 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
       setRecipient(account);
     }
   }, [account, recipient]);
+
+  // Prefill initial values if passed from live simulator
+  useEffect(() => {
+    if (isOpen && initialValues) {
+      if (initialValues.title) setTitle(initialValues.title);
+      if (initialValues.target) setTarget(initialValues.target);
+      if (initialValues.tokenKey) setSelectedTokenKey(initialValues.tokenKey);
+      if (initialValues.participants) setExpectedParticipants(String(initialValues.participants));
+      if (initialValues.description) setDescription(initialValues.description);
+    }
+  }, [isOpen, initialValues]);
 
   // Handle escape key
   useEffect(() => {
@@ -133,6 +196,13 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
   }, [isOpen, isLoading, onClose]);
 
   if (!isOpen) return null;
+
+  const targetNum = parseFloat(target) || 0;
+  const participantsNum = parseInt(expectedParticipants, 10);
+  const suggestedShare =
+    participantsNum > 1 && targetNum > 0
+      ? (targetNum / participantsNum).toFixed(activeToken.decimals === 6 ? 2 : 2)
+      : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,22 +218,32 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
       return;
     }
 
-    const targetNum = parseFloat(target);
-    if (isNaN(targetNum) || targetNum <= 0) {
+    if (targetNum <= 0) {
       setValidationError("Funding target must be greater than zero.");
       return;
     }
 
     const cleanRecipient = recipient.trim();
     if (!cleanRecipient || !ethers.isAddress(cleanRecipient)) {
-      setValidationError("Please enter a valid EVM recipient address (0x...).");
+      setValidationError("Please enter a valid wallet address (0x...) for the recipient.");
       return;
     }
 
-    const ok = await onCreate(cleanRecipient, target, durationSeconds, cleanTitle, description.trim());
+    const parsedParticipants = participantsNum > 1 ? participantsNum : null;
+
+    const ok = await onCreate(
+      activeToken.address,
+      cleanRecipient,
+      target,
+      durationSeconds,
+      cleanTitle,
+      description.trim(),
+      parsedParticipants
+    );
     if (ok) {
       setTitle('');
       setDescription('');
+      setExpectedParticipants('');
       setSelectedTemplateId(null);
       onClose();
     }
@@ -192,7 +272,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
           </div>
           <div>
             <h3 id="create-pool-title" className="text-xl font-bold text-white tracking-tight">Create Funding Pool</h3>
-            <p className="text-xs text-indigo-300/80">Enforced on-chain by Monad Smart Contract</p>
+            <p className="text-xs text-indigo-300/80">Automated group money box with guaranteed refunds</p>
           </div>
         </div>
 
@@ -209,9 +289,9 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Quick Start Templates</span>
+                <span>Quick Start Presets</span>
               </span>
-              <span className="text-[10px] text-gray-400 font-mono">1-Click Autofill</span>
+              <span className="text-[10px] text-gray-400 font-mono">1-Click Fill</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {QUICK_TEMPLATES.map((tmpl) => (
@@ -230,11 +310,64 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                   <div className="min-w-0">
                     <div className="text-xs font-semibold truncate">{tmpl.name}</div>
                     <div className="text-[10px] text-gray-400 font-mono">
-                      {tmpl.target} {tokenSymbol} · {tmpl.durationLabel}
+                      {tmpl.target} {SUPPORTED_TOKENS[tmpl.tokenKey].symbol} · {tmpl.durationLabel}
                     </div>
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Token Currency Selector */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
+              <span className="flex items-center space-x-1.5">
+                <Coins className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Choose Currency *</span>
+              </span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setSelectedTokenKey('MUSD');
+                }}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  selectedTokenKey === 'MUSD'
+                    ? 'bg-indigo-950/70 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                    : 'bg-gray-900/60 border-gray-800 text-gray-400 hover:border-gray-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white">mUSD</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300">18 Dec</span>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1 leading-snug">
+                  Free test dollars (instant in-app mint)
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setSelectedTokenKey('USDC');
+                }}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  selectedTokenKey === 'USDC'
+                    ? 'bg-indigo-950/70 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                    : 'bg-gray-900/60 border-gray-800 text-gray-400 hover:border-gray-700'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white">USDC</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Circle 6 Dec</span>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1 leading-snug">
+                  Official Circle USD Coin on Monad
+                </p>
+              </button>
             </div>
           </div>
 
@@ -247,7 +380,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Hackathon Team Travel & Lodging"
+              placeholder="e.g. Hackathon Team Dinner & Refreshments"
               className="w-full px-4 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white outline-none text-sm transition-all"
               required
               disabled={isLoading}
@@ -262,11 +395,134 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Explain the purpose of this pool to your contributors..."
+              placeholder="Explain the purpose of this group fund to your friends..."
               rows={2}
               className="w-full px-4 py-2 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white outline-none text-sm transition-all resize-none"
               disabled={isLoading}
             />
+          </div>
+
+          {/* Feature: Split The Bill & Tip Calculator */}
+          <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-br from-[#131726] to-[#0e1220] border border-indigo-900/50 hover:border-indigo-500/40 transition-all shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-indigo-950/90 border border-indigo-700/50 flex items-center justify-center text-indigo-400 shrink-0 shadow-inner">
+                  <Calculator className="w-5 h-5 text-indigo-300" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm sm:text-base font-bold text-white tracking-tight">
+                      Bill-Splitter & Tip Tool
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 font-mono truncate">
+                    Dinner / Travel / Shared Cart
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setShowBillSplitter(!showBillSplitter);
+                }}
+                className={`px-4 py-2 sm:px-4.5 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 shrink-0 shadow-md ${
+                  showBillSplitter
+                    ? 'bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30 hover:scale-[1.02] active:scale-[0.98]'
+                }`}
+              >
+                <span>{showBillSplitter ? 'Close' : 'Calculate Split'}</span>
+              </button>
+            </div>
+
+            {showBillSplitter && (
+              <div className="pt-3.5 mt-3.5 border-t border-indigo-900/30 space-y-3.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-300 block mb-1.5">
+                      Raw Bill Amount ({activeToken.symbol})
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="any"
+                      value={billBaseAmount}
+                      onChange={(e) => setBillBaseAmount(e.target.value)}
+                      placeholder="120"
+                      className="w-full px-3.5 py-2 rounded-xl bg-gray-950/80 border border-gray-700/80 text-white font-mono text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-gray-300 block mb-1.5">
+                      Split Among (Friends)
+                    </label>
+                    <input
+                      type="number"
+                      min="2"
+                      max="100"
+                      value={splitCount}
+                      onChange={(e) => setSplitCount(e.target.value)}
+                      placeholder="4"
+                      className="w-full px-3.5 py-2 rounded-xl bg-gray-950/80 border border-gray-700/80 text-white font-mono text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-300 block mb-1.5">
+                    Tip / Service Buffer
+                  </label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[0, 10, 15, 18, 20].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => {
+                          playClickSound();
+                          setTipPercent(pct);
+                        }}
+                        className={`py-2 rounded-xl text-xs sm:text-sm font-semibold border transition-all ${
+                          tipPercent === pct
+                            ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
+                            : 'bg-[#0f121a] text-gray-400 border-gray-800 hover:text-white hover:border-gray-700'
+                        }`}
+                      >
+                        {pct === 0 ? '0%' : `+${pct}%`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Calculation Result & Apply Button */}
+                <div className="p-3 sm:p-3.5 rounded-xl bg-[#0c0f18] border border-indigo-950/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="text-xs sm:text-sm">
+                    <span className="text-gray-400">Total: </span>
+                    <strong className="text-white font-mono font-bold">${totalWithTip.toFixed(2)}</strong>
+                    <span className="text-gray-500"> (Tip: ${tipAmount.toFixed(2)}) · </span>
+                    <strong className="text-emerald-400 font-mono font-bold">${perPersonSplit}</strong>
+                    <span className="text-gray-400"> / person</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleApplySplitter}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-1.5 transition-all shadow-md shadow-indigo-600/20 active:scale-95"
+                  >
+                    {splitterApplied ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-300" />
+                        <span>Applied!</span>
+                      </>
+                    ) : (
+                      <span>Apply to Target & FairShare</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Target Amount */}
@@ -274,13 +530,13 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
               <span className="flex items-center space-x-1.5">
                 <Target className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Target Funding Goal ({tokenSymbol}) *</span>
+                <span>Target Funding Goal ({activeToken.symbol}) *</span>
               </span>
             </label>
             <div className="relative">
               <input
                 type="number"
-                min="1"
+                min="0.01"
                 step="any"
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
@@ -290,9 +546,118 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
                 disabled={isLoading}
               />
               <span className="absolute right-3.5 top-2.5 text-xs font-semibold text-gray-400">
-                {tokenSymbol}
+                {activeToken.symbol}
               </span>
             </div>
+          </div>
+
+          {/* FairShare: Expected Group Size / Participants */}
+          <div className="p-4 rounded-2xl bg-[#131722]/90 border border-indigo-900/40 hover:border-indigo-500/30 transition-all space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-indigo-400" />
+                <span>FairShare: Group Size (Optional)</span>
+              </label>
+              <span className="text-[10px] text-gray-400 font-mono">Voluntary Guidance</span>
+            </div>
+
+            <div className="relative flex items-center">
+              <input
+                type="number"
+                min="2"
+                max="500"
+                step="1"
+                value={expectedParticipants}
+                onChange={(e) => setExpectedParticipants(e.target.value)}
+                placeholder="e.g. 5 friends splitting"
+                className="w-full pl-4 pr-12 py-2.5 rounded-xl bg-gray-900/90 border border-gray-700/80 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-white outline-none text-sm transition-all placeholder:text-gray-500"
+                disabled={isLoading}
+              />
+
+              {/* Custom Interactive Stepper Arrows */}
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col bg-[#0e1220] border border-indigo-900/80 hover:border-indigo-500/60 rounded-lg overflow-hidden shadow-sm transition">
+                <button
+                  type="button"
+                  aria-label="Increase headcount"
+                  onClick={() => {
+                    playClickSound();
+                    const current = parseInt(expectedParticipants || '0', 10);
+                    if (current < 2) {
+                      setExpectedParticipants('2');
+                    } else if (current < 500) {
+                      setExpectedParticipants(String(current + 1));
+                    }
+                  }}
+                  disabled={isLoading || parseInt(expectedParticipants || '0', 10) >= 500}
+                  className="w-7 h-4 flex items-center justify-center text-gray-400 hover:text-white hover:bg-indigo-600 transition-all active:scale-95 disabled:opacity-20 disabled:hover:bg-transparent"
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-full h-[1px] bg-indigo-950/80" />
+                <button
+                  type="button"
+                  aria-label="Decrease headcount"
+                  onClick={() => {
+                    playClickSound();
+                    const current = parseInt(expectedParticipants || '0', 10);
+                    if (current <= 2) {
+                      setExpectedParticipants('');
+                    } else {
+                      setExpectedParticipants(String(current - 1));
+                    }
+                  }}
+                  disabled={isLoading || !expectedParticipants || parseInt(expectedParticipants, 10) <= 2}
+                  className="w-7 h-4 flex items-center justify-center text-gray-400 hover:text-white hover:bg-indigo-600 transition-all active:scale-95 disabled:opacity-20 disabled:hover:bg-transparent"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Preset Pills for 1-Click Headcount */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              <span className="text-[11px] text-gray-400 font-mono mr-0.5">Quick:</span>
+              {[2, 3, 4, 5, 6, 8, 10].map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => {
+                    playClickSound();
+                    setExpectedParticipants(String(size));
+                  }}
+                  className={`px-2 py-0.5 rounded-lg text-xs font-mono font-semibold transition-all ${
+                    expectedParticipants === String(size)
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 ring-1 ring-indigo-400'
+                      : 'bg-gray-800/80 hover:bg-gray-700 text-gray-400 hover:text-white border border-gray-700/60'
+                  }`}
+                >
+                  {size}p
+                </button>
+              ))}
+              {expectedParticipants && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playClickSound();
+                    setExpectedParticipants('');
+                  }}
+                  className="px-2 py-0.5 rounded-lg text-[11px] text-gray-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all font-mono"
+                  title="Clear headcount"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {suggestedShare && (
+              <div className="text-xs text-emerald-300 bg-emerald-950/40 border border-emerald-800/40 p-2.5 rounded-xl flex items-center justify-between">
+                <span>Suggested share per person:</span>
+                <span className="font-mono font-bold text-white">~{suggestedShare} {activeToken.symbol}</span>
+              </div>
+            )}
+            <p className="text-[10px] text-gray-400">
+              Suggested shares are non-binding guidance to help friends see their equal share. Anyone can contribute any amount.
+            </p>
           </div>
 
           {/* Recipient Address */}
@@ -300,7 +665,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
               <span className="flex items-center space-x-1.5">
                 <User className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Fixed Recipient Address *</span>
+                <span>Recipient Wallet Address *</span>
               </span>
             </label>
             <input
@@ -328,7 +693,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
               <span className="flex items-center space-x-1.5">
                 <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Funding Deadline Duration *</span>
+                <span>Funding Countdown Duration *</span>
               </span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -350,7 +715,7 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             </div>
             <p className="mt-2 text-[11px] text-gray-400 flex items-center space-x-1">
               <Info className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-              <span>If target is not met by the deadline, 100% refunds become available.</span>
+              <span>If the goal is not reached before time runs out, 100% refunds unlock immediately.</span>
             </p>
           </div>
 
@@ -373,10 +738,10 @@ export const CreatePoolModal: React.FC<CreatePoolModalProps> = ({
             ) : isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Deploying Pool on Monad...</span>
+                <span>Creating Pool on Monad...</span>
               </>
             ) : (
-              <span>Launch Pool on Monad</span>
+              <span>Create Pool on Monad</span>
             )}
           </button>
         </form>

@@ -252,25 +252,26 @@ Used exclusively when running deployment scripts via Hardhat.
 
 ## 🌐 Deployed Smart Contracts
 
-The contracts are permanently deployed and operational on **Monad Testnet**:
+The contracts and supported tokens are operational on **Monad Testnet**:
 
-| Contract | Address | Explorer Link |
-|---|---|---|
-| **CollectivePool** (Manager) | `0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02` | [View on Monad Explorer](https://testnet.monadexplorer.com/address/0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02) |
-| **MockERC20 (`mUSD`)** (Token) | `0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6` | [View on Monad Explorer](https://testnet.monadexplorer.com/address/0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6) |
-| **Deployer Wallet** | `0xbDE38691fa0E8d34782a5F76504001f0Cb5b083d` | [View on Monad Explorer](https://testnet.monadexplorer.com/address/0xbDE38691fa0E8d34782a5F76504001f0Cb5b083d) |
+| Contract / Asset | Address | Explorer Link | Decimals |
+|---|---|---|---|
+| **CollectivePool** (Manager) | `0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02` | [View on Monad Explorer](https://testnet.monadexplorer.com/address/0x4c1205b43F4Bb6c1FB9e2029a1b0e42e3e8b8a02) | N/A |
+| **Native Circle USDC** (Digital Dollar) | `0x534b2f3A21130d7a60830c2Df862319e593943A3` | [View on Monad Explorer](https://testnet.monadexplorer.com/address/0x534b2f3A21130d7a60830c2Df862319e593943A3) | `6` |
+| **MockERC20 (`mUSD`)** (Test Token) | `0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6` | [View on Monad Explorer](https://testnet.monadexplorer.com/address/0xb4C9816b0C540C6db4c41D05751f403ae5231Dd6) | `18` |
+| **Deployer Wallet** | `0xbDE38691fa0E8d34782a5F76504001f0Cb5b083d` | [View on Monad Explorer](https://testnet.monadexplorer.com/address/0xbDE38691fa0E8d34782a5F76504001f0Cb5b083d) | N/A |
 
 ### Network Parameters
 
 - **Network Name**: Monad Testnet
 - **Chain ID**: `10143` (`0x279f`)
 - **RPC URL**: `https://testnet-rpc.monad.xyz`
-- **Native Gas Token**: `MON`
+- **Native Gas Token**: `MON` (18 decimals)
 - **Block Explorer**: [https://testnet.monadexplorer.com](https://testnet.monadexplorer.com)
-- **Token Decimals**: `18` (for both native MON and mock mUSD)
+- **Token Decimals**: `6` for Circle USDC; `18` for native MON and mock mUSD
 
 > [!WARNING]  
-> **Test Token Disclaimer**: `mUSD` is a mock testnet token with **no financial value**. Do not send real funds or mainnet assets to any of these addresses.
+> **Test Token Disclaimer**: `mUSD` and testnet `USDC` on Monad Testnet are experimental test tokens with **no fiat value**. Do not send real funds or mainnet assets to any of these addresses.
 
 ---
 
@@ -423,7 +424,17 @@ git push -u origin feat/improve-pool-cards
 
 ## 📄 License
 
-This repository does not currently include a formal open-source license. The repository owner (**Rish2103**) will select and add an appropriate open-source license file in an upcoming release.
+This project is licensed under the standard OSI-approved **MIT License** (dated 2026).  
+Copyright (c) 2026 **COLLECTIVE Team**.  
+See the full text in the repository root [LICENSE](LICENSE) file.
+
+---
+
+## 🤖 AI-Tool Disclosure
+
+In accordance with hackathon and open-source transparency guidelines:
+- **Google DeepMind Antigravity / Gemini 3.8 Flash**: Used as an AI pair-programming assistant for codebase analysis, multi-token USDC integration, FairShare and Goal Rescue logic, verifiable outcome receipt generation, test automation, and documentation verification.
+- No other generative AI tools, proprietary code generators, or unauthorized external assets were used. All smart-contract rules and core cryptographic invariants were implemented and verified with automated test suites.
 
 ---
 
@@ -433,3 +444,4 @@ This repository does not currently include a formal open-source license. The rep
 - **Hackathon**: Metropolis Hackathon
 - **Track**: Consumer Products & Payments
 - **Repository Owner**: [Rish2103](https://github.com/Rish2103)
+

@@ -1,33 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Target, User, ArrowUpRight, CheckCircle2, AlertOctagon, Share2, Check, ExternalLink } from 'lucide-react';
+import { Clock, Target, User, ArrowUpRight, CheckCircle2, AlertOctagon, Share2, Check, Users, FileText, Zap } from 'lucide-react';
 import { PoolData, PoolState } from '../types';
 import { formatTokenAmount, shortenAddress, formatDeadline } from '../utils/formatters';
-import { getExplorerAddressUrl } from '../contracts/config';
+import { getExplorerAddressUrl, getTokenConfig } from '../contracts/config';
 import { playCopyChime } from '../utils/audioFeedback';
+import { SpotlightCard } from './SpotlightCard';
 
 interface PoolCardProps {
   pool: PoolData;
-  tokenSymbol: string;
+  tokenSymbol?: string;
   account: string | null;
   onSelect: (pool: PoolData) => void;
   onClaimPayout: (poolId: number) => void;
   onClaimRefund: (poolId: number) => void;
   actionLoading: string | null;
   onOpenShare?: (pool: PoolData) => void;
+  onOpenReceipt?: (pool: PoolData) => void;
 }
 
 export const PoolCard: React.FC<PoolCardProps> = ({
   pool,
-  tokenSymbol,
   account,
   onSelect,
   onClaimPayout,
   onClaimRefund,
   actionLoading,
   onOpenShare,
+  onOpenReceipt,
 }) => {
   const [deadlineInfo, setDeadlineInfo] = useState(() => formatDeadline(pool.deadline));
   const [copiedLink, setCopiedLink] = useState(false);
+
+  const tokenConfig = getTokenConfig(pool.token);
 
   // Update countdown ticker every second
   useEffect(() => {
@@ -54,7 +58,7 @@ export const PoolCard: React.FC<PoolCardProps> = ({
         });
         return;
       } catch (err) {
-        // Fallback to clipboard if user cancels or share fails
+        // Fallback to clipboard
       }
     }
 
@@ -78,24 +82,39 @@ export const PoolCard: React.FC<PoolCardProps> = ({
 
   const isPaidOut = pool.state === PoolState.PaidOut;
   const isRefundState = deadlineInfo.isExpired && !isTargetMet && !isPaidOut;
+  const isFundingInProgress = !deadlineInfo.isExpired && !isTargetMet && !isPaidOut;
+  const isGoalSecured = isTargetMet && !isPaidOut;
 
   const userContributed = pool.userContribution ? pool.userContribution > 0n : false;
 
-  // Average contribution per backer
   const backerCount = pool.contributors.length;
-  const avgContributionWei = backerCount > 0 ? contributedWei / BigInt(backerCount) : 0n;
 
   const isCreator = account && pool.creator.toLowerCase() === account.toLowerCase();
   const isRecipient = account && pool.recipient.toLowerCase() === account.toLowerCase();
 
+  const displayDescription = pool.cleanDescription || pool.description || "No description provided.";
+
   return (
-    <div className="bg-[#0e111a] border border-[#1e2333] hover:border-indigo-500/40 rounded-2xl p-5 sm:p-6 shadow-xl transition-all duration-200 hover:-translate-y-1 flex flex-col justify-between group relative overflow-hidden">
+    <SpotlightCard
+      spotlightColor="rgba(99, 102, 241, 0.14)"
+      borderColor="rgba(129, 140, 248, 0.4)"
+      maxTilt={2}
+      className="bg-[#0e111a] border border-[#1e2333] hover:border-indigo-500/40 rounded-2xl p-5 sm:p-6 shadow-xl transition-all duration-200 hover:-translate-y-1 flex flex-col justify-between group"
+    >
       <div>
-        {/* Top Header: Pool ID, Status Badges & Share Button */}
+        {/* Top Header: Pool ID, Token badge & Status Badges */}
         <div className="flex items-start justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-semibold text-indigo-400 bg-indigo-950/60 border border-indigo-800/40 px-2.5 py-0.5 rounded-lg">
-              Pool #{pool.id}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-mono font-semibold text-indigo-400 bg-indigo-950/60 border border-indigo-800/40 px-2 py-0.5 rounded-lg">
+              #{pool.id}
+            </span>
+
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+              tokenConfig.isNativeUsdc
+                ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40'
+                : 'bg-indigo-950/60 text-indigo-300 border-indigo-800/40'
+            }`}>
+              {tokenConfig.symbol}
             </span>
 
             {isCreator && (
@@ -106,7 +125,7 @@ export const PoolCard: React.FC<PoolCardProps> = ({
 
             {isRecipient && !isCreator && (
               <span className="text-[10px] font-semibold text-cyan-300 bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded-md">
-                You are Recipient
+                Recipient
               </span>
             )}
           </div>
@@ -127,38 +146,26 @@ export const PoolCard: React.FC<PoolCardProps> = ({
               )}
             </button>
 
-            {/* Lifecycle Status Badge */}
+            {/* Lifecycle Status Badge: Explicit 4 Distinct States */}
             {isPaidOut ? (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-950/70 text-emerald-400 border border-emerald-600/50">
                 <CheckCircle2 className="w-3 h-3" />
-                <span>Paid Out</span>
+                <span>Successfully Settled</span>
               </span>
-            ) : isTargetMet ? (
+            ) : isGoalSecured ? (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-600/50">
-                <CheckCircle2 className="w-3 h-3" />
-                <span>{percentNumber > 100 ? `${percentNumber}% Funded` : 'Goal Met'}</span>
+                <CheckCircle2 className="w-3 h-3 text-indigo-400" />
+                <span>Goal Secured</span>
               </span>
             ) : isRefundState ? (
-              pool.remainingHeld !== undefined && pool.remainingHeld === 0n && pool.totalContributed > 0n ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-indigo-950/70 text-indigo-300 border border-indigo-600/50">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span>Refunds Settled</span>
-                </span>
-              ) : pool.totalContributed === 0n ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-gray-900/80 text-gray-400 border border-gray-700/50">
-                  <Clock className="w-3 h-3" />
-                  <span>Expired (0 Raised)</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-rose-950/70 text-rose-300 border border-rose-600/50 animate-pulse">
-                  <AlertOctagon className="w-3 h-3" />
-                  <span>Refunds Active</span>
-                </span>
-              )
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-rose-950/70 text-rose-300 border border-rose-600/50 animate-pulse">
+                <AlertOctagon className="w-3 h-3 text-rose-400" />
+                <span>Refunds Open</span>
+              </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-indigo-950/50 text-indigo-300 border border-indigo-800/40">
                 <Clock className="w-3 h-3 text-indigo-400" />
-                <span>{deadlineInfo.text}</span>
+                <span>Funding in Progress</span>
               </span>
             )}
           </div>
@@ -168,15 +175,30 @@ export const PoolCard: React.FC<PoolCardProps> = ({
         <h4 className="text-lg font-bold text-white mb-1.5 line-clamp-1 group-hover:text-indigo-200 transition-colors">
           {pool.title}
         </h4>
-        <p className="text-xs text-gray-400 mb-4 line-clamp-2 h-8 leading-relaxed">
-          {pool.description || "No description provided."}
+        <p className="text-xs text-gray-400 mb-3 line-clamp-2 h-8 leading-relaxed">
+          {displayDescription}
         </p>
+
+        {/* Optional FairShare Guidance Banner */}
+        {pool.expectedParticipants && pool.expectedParticipants > 1 && (
+          <div className="mb-3 px-2.5 py-1 rounded-lg bg-indigo-950/30 border border-indigo-800/30 flex items-center justify-between text-[11px] text-indigo-300">
+            <span className="flex items-center gap-1">
+              <Users className="w-3 h-3 text-indigo-400" />
+              <span>FairShare ({pool.expectedParticipants} people):</span>
+            </span>
+            <span className="font-mono font-semibold">
+              ~{formatTokenAmount(pool.targetAmount / BigInt(pool.expectedParticipants), tokenConfig.decimals)} {tokenConfig.symbol} / person
+            </span>
+          </div>
+        )}
 
         {/* Real Progress Bar */}
         <div className="mb-4">
           <div className="flex justify-between items-baseline text-xs mb-1.5">
             <span className="font-semibold text-white">
-              <span className="font-mono text-sm font-bold text-indigo-300">{formatTokenAmount(contributedWei)}</span> / {formatTokenAmount(targetWei)} {tokenSymbol}
+              <span className="font-mono text-sm font-bold text-indigo-300">
+                {formatTokenAmount(contributedWei, tokenConfig.decimals)}
+              </span> / {formatTokenAmount(targetWei, tokenConfig.decimals)} {tokenConfig.symbol}
             </span>
             <span className="font-mono font-semibold text-indigo-400">
               {percentNumber}%
@@ -199,14 +221,22 @@ export const PoolCard: React.FC<PoolCardProps> = ({
 
           {/* Overfunding Insight */}
           {percentNumber > 100 && (
-            <p className="text-[10px] text-indigo-300/90 mt-1 flex items-center justify-between">
-              <span>Stretch Goal: +{formatTokenAmount(contributedWei - targetWei)} {tokenSymbol} surplus</span>
+            <div className="text-[10px] text-indigo-300/90 mt-1 flex items-center justify-between">
+              <span className="font-semibold text-emerald-400">Stretch Goal: +{formatTokenAmount(contributedWei - targetWei, tokenConfig.decimals)} {tokenConfig.symbol}</span>
               <span className="text-gray-400">Transfers to recipient</span>
+            </div>
+          )}
+
+          {/* Time Remaining / Countdown */}
+          {isFundingInProgress && (
+            <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-gray-500" />
+              <span>{deadlineInfo.text}</span>
             </p>
           )}
         </div>
 
-        {/* Meta Info Grid: Recipient, Backers & Average Contribution */}
+        {/* Meta Info Grid: Recipient, Backers */}
         <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-400 mb-4 bg-[#121622] p-2.5 rounded-xl border border-[#1e2333]">
           <div className="flex items-center space-x-1.5 overflow-hidden">
             <User className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
@@ -237,17 +267,17 @@ export const PoolCard: React.FC<PoolCardProps> = ({
             }`}
           >
             <span className="text-gray-400">
-              {isRefundState ? 'Claimable refund:' : 'Your deposit:'}
+              {isRefundState ? 'Claimable refund:' : 'Your contribution:'}
             </span>
             <span className="font-mono font-bold text-white">
-              {formatTokenAmount(pool.userContribution)} {tokenSymbol}
+              {formatTokenAmount(pool.userContribution, tokenConfig.decimals)} {tokenConfig.symbol}
             </span>
           </div>
         )}
       </div>
 
       {/* Card Actions */}
-      <div className="pt-2 border-t border-[#1e2333] flex items-center justify-between gap-2">
+      <div className="pt-2 border-t border-[#1e2333] flex items-center justify-between gap-2 flex-wrap">
         <button
           onClick={() => onSelect(pool)}
           className="flex-1 py-2 px-3 rounded-xl text-xs font-semibold bg-[#161a26] hover:bg-[#202538] text-indigo-200 border border-[#23283c] hover:border-[#303752] flex items-center justify-center space-x-1.5 transition-all"
@@ -256,26 +286,37 @@ export const PoolCard: React.FC<PoolCardProps> = ({
           <ArrowUpRight className="w-3.5 h-3.5" />
         </button>
 
+        {(isPaidOut || isRefundState) && onOpenReceipt && (
+          <button
+            onClick={() => onOpenReceipt(pool)}
+            className="py-2 px-2.5 rounded-xl text-xs font-semibold bg-[#121624] hover:bg-[#1a2032] text-indigo-300 border border-indigo-800/40 transition-all flex items-center gap-1"
+            title="View verified on-chain outcome receipt"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Receipt</span>
+          </button>
+        )}
+
         {isRefundState && userContributed && (
           <button
             onClick={() => onClaimRefund(pool.id)}
             disabled={actionLoading === `refund_${pool.id}`}
             className="py-2 px-3 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-sm shadow-rose-600/20 transition-all disabled:opacity-50"
           >
-            {actionLoading === `refund_${pool.id}` ? 'Refunding...' : 'Claim Refund'}
+            {actionLoading === `refund_${pool.id}` ? 'Refunding...' : 'Claim 100% Refund'}
           </button>
         )}
 
-        {isTargetMet && !isPaidOut && (
+        {isGoalSecured && (
           <button
             onClick={() => onClaimPayout(pool.id)}
             disabled={actionLoading === `payout_${pool.id}`}
             className="py-2 px-3 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/20 transition-all disabled:opacity-50"
           >
-            {actionLoading === `payout_${pool.id}` ? 'Releasing...' : 'Claim Payout'}
+            {actionLoading === `payout_${pool.id}` ? 'Releasing...' : 'Release Funds'}
           </button>
         )}
       </div>
-    </div>
+    </SpotlightCard>
   );
 };

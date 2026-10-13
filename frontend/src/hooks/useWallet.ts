@@ -25,12 +25,25 @@ export function useWallet() {
 
   const refreshTokenBalance = useCallback(async (account: string, provider: ethers.BrowserProvider | ethers.JsonRpcProvider) => {
     try {
-      const tokenContract = new ethers.Contract(CONTRACT_ADDRESSES.mockToken, MockERC20ABI, provider);
-      const balance = await tokenContract.balanceOf(account);
-      const symbol = await tokenContract.symbol();
-      setWallet(prev => ({ ...prev, tokenBalance: balance, tokenSymbol: symbol }));
+      const musdContract = new ethers.Contract(CONTRACT_ADDRESSES.mockToken, MockERC20ABI, provider);
+      const usdcContract = new ethers.Contract(CONTRACT_ADDRESSES.usdc, MockERC20ABI, provider);
+
+      const [musdBal, usdcBal] = await Promise.all([
+        musdContract.balanceOf(account).catch(() => 0n),
+        usdcContract.balanceOf(account).catch(() => 0n),
+      ]);
+
+      setWallet(prev => ({
+        ...prev,
+        tokenBalance: musdBal,
+        tokenSymbol: 'mUSD',
+        balances: {
+          [CONTRACT_ADDRESSES.mockToken.toLowerCase()]: musdBal,
+          [CONTRACT_ADDRESSES.usdc.toLowerCase()]: usdcBal,
+        },
+      }));
     } catch (err) {
-      console.warn("Could not fetch token balance:", err);
+      console.warn("Could not fetch token balances:", err);
     }
   }, []);
 
@@ -201,6 +214,11 @@ export function useWallet() {
         const provider = new ethers.BrowserProvider(window.ethereum);
         refreshTokenBalance(wallet.account, provider);
       }
+    },
+    getTokenBalance: (tokenAddress?: string | null) => {
+      if (!tokenAddress || !wallet.balances) return wallet.tokenBalance;
+      const addr = tokenAddress.toLowerCase();
+      return wallet.balances[addr] ?? 0n;
     },
   };
 }
